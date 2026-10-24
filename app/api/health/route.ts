@@ -7,14 +7,16 @@ export async function GET() {
   try {
     const { provider, model } = resolveProvider();
     return NextResponse.json({ ok: true, provider, model });
-  } catch {
+  } catch (error) {
     return NextResponse.json(
       {
         ok: false,
         provider: null,
         model: null,
         error:
-          "No hay API key de IA configurada. Definí GEMINI_API_KEY u OPENAI_API_KEY.",
+          error instanceof Error
+            ? error.message
+            : "No se pudo resolver el proveedor de IA.",
       },
       { status: 503 },
     );
