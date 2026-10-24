@@ -1,5 +1,6 @@
 import { isValidCuit, normalizeCuit } from "./cuit";
 import type { ClientProfile } from "./clients";
+import { provisionalIdIssues } from "./provisional-id";
 import type { InvoiceData, TaxLine, ValidationIssue } from "./types";
 
 const TOLERANCE = 0.05;
@@ -98,7 +99,19 @@ export function validateInvoice(
     });
   }
 
-  if (esExterior) {
+  if (!data.numero.trim()) {
+    issues.push({
+      code: "numero_faltante",
+      message: "Número de factura no encontrado.",
+      severity: "error",
+    });
+  }
+
+  issues.push(...provisionalIdIssues(data));
+
+  if (data.emisorIdProvisorio) {
+    // El identificador ya fue generado y se informa en las incidencias.
+  } else if (esExterior) {
     if (!data.emisor.cuit.trim()) {
       issues.push({
         code: "id_fiscal_exterior_faltante",
@@ -110,7 +123,7 @@ export function validateInvoice(
     issues.push({
       code: "comprobante_exterior",
       message:
-        "Comprobante del exterior: no se valida CUIT ni CAE. Verificá la cotización aplicada.",
+        "Operación internacional sujeta a validación AFIP: no se valida CUIT ni CAE. Verificá la cotización aplicada.",
       severity: "info",
     });
   } else if (!isValidCuit(data.emisor.cuit)) {
@@ -121,7 +134,7 @@ export function validateInvoice(
     });
   }
 
-  if (!isValidCuit(data.receptor.cuit)) {
+  if (!data.receptorIdProvisorio && !isValidCuit(data.receptor.cuit)) {
     issues.push({
       code: "cuit_receptor_invalido",
       message: `El CUIT del receptor (${data.receptor.cuit || "vacío"}) no pasa la validación de dígito verificador.`,

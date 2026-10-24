@@ -13,6 +13,17 @@ export function trafficLight(row: InvoiceRow): TrafficLight {
   return "green";
 }
 
+/** Semáforo calculado directamente desde los avisos (para el borrador en edición). */
+export function lightFromIssues(
+  issues: Array<{ severity: string }>,
+  confianza: number,
+): TrafficLight {
+  if (issues.some((issue) => issue.severity === "error")) return "red";
+  if (issues.some((issue) => issue.severity === "warning")) return "amber";
+  if (confianza < 0.75) return "amber";
+  return "green";
+}
+
 export function statusLabel(row: InvoiceRow): string {
   if (row.status === "pending") return "En cola";
   if (row.status === "processing") return "Leyendo…";

@@ -16,7 +16,10 @@ Reglas estrictas:
 9. "confianza" debe reflejar qué tan legible y completa fue la extracción (0 a 1). Sé conservador.
 10. Si el emisor está fuera de Argentina (VAT/NIF en lugar de CUIT, sin CAE, moneda extranjera), marcá "origen": "exterior" y usá "tipoComprobante": "Factura exterior". En ese caso el identificador fiscal del emisor va en "cuit" tal como figura (VAT, NIF, EIN).
 11. No marques en "camposDudosos" un campo que directamente no existe en ese tipo de comprobante (por ejemplo, punto de venta o CAE en una factura del exterior, o vencimiento cuando no figura). Dejalo vacío o null y no lo reportes como dudoso.
-12. No agregues explicaciones fuera del JSON.`;
+12. Los comprobantes pueden estar en español, inglés o portugués. Reconocé los equivalentes: Fecha de Emisión / Invoice Date / Issue Date / Data de Emissão; Vencimiento / Due Date / Vencimento; Neto Gravado / Subtotal / Net Amount / Taxable Base / Valor Base / Valor dos Serviços; IVA / VAT / Sales Tax / ISS / ICMS / PIS / COFINS; Retenciones / Withholding Tax / Imposto Retido. Completá "idiomaOriginal" con español, inglés o portugués.
+13. Identificadores fiscales: CUIT/CUIL/N.I.F., VAT Number/Tax ID/Company Registration Number/EIN, CNPJ/CPF/Inscrição Estadual. Si el emisor o el receptor no tiene identificador visible, dejá "cuit" vacío: el sistema le asigna uno provisorio. Nunca lo inventes.
+14. Las retenciones (Ganancias, IIBB, IVA) van en "retenciones" y no forman parte del total del comprobante. Las percepciones sí.
+15. No agregues explicaciones fuera del JSON.`;
 
 export function buildUserPrompt(client: ClientProfile): string {
   const plan = client.planCuentas

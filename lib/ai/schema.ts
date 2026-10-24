@@ -19,7 +19,8 @@ const partySchema: JsonSchema = {
     },
     cuit: {
       type: "string",
-      description: "CUIT con o sin guiones. Cadena vacía si no se puede leer.",
+      description:
+        "Identificador fiscal tal como figura: CUIT/CUIL/N.I.F., VAT Number/Tax ID/Company Registration Number/EIN, CNPJ/CPF/Inscrição Estadual. Cadena vacía si no figura: nunca lo inventes.",
     },
     condicionIva: {
       type: "string",
@@ -108,6 +109,7 @@ export const invoiceJsonSchema: JsonSchema = {
     "subtotal",
     "impuestos",
     "percepciones",
+    "retenciones",
     "total",
     "cae",
     "caeVencimiento",
@@ -124,6 +126,7 @@ export const invoiceJsonSchema: JsonSchema = {
         "Factura B",
         "Factura C",
         "Factura M",
+        "Factura E",
         "Nota de Crédito A",
         "Nota de Crédito B",
         "Nota de Crédito C",
@@ -189,6 +192,12 @@ export const invoiceJsonSchema: JsonSchema = {
       description: "Percepciones (IIBB, IVA, ganancias).",
       items: taxSchema,
     },
+    retenciones: {
+      type: "array",
+      description:
+        "Retenciones (Ganancias, IIBB, IVA, Withholding Tax, Imposto Retido) que figuren en el comprobante. Vacío si no hay.",
+      items: taxSchema,
+    },
     total: { type: "number", description: "Total final del comprobante." },
     cae: {
       type: ["string", "null"],
@@ -200,7 +209,7 @@ export const invoiceJsonSchema: JsonSchema = {
     },
     idiomaOriginal: {
       type: "string",
-      description: "Idioma del comprobante original: español, inglés, portugués, etc.",
+      description: "Idioma del comprobante original: español, inglés o portugués.",
     },
     observaciones: {
       type: "string",

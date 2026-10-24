@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getClient } from "@/lib/clients";
 import { extractInvoice, MissingApiKeyError } from "@/lib/ai";
+import { applyProvisionalIds } from "@/lib/provisional-id";
 import { validateInvoice } from "@/lib/validate";
 import type { ErrorResponse, ExtractionResponse } from "@/lib/types";
 
@@ -73,7 +74,7 @@ export async function POST(request: Request) {
 
   try {
     const buffer = Buffer.from(await file.arrayBuffer());
-    const { invoice, provider, model } = await extractInvoice(
+    const extracted = await extractInvoice(
       {
         base64: buffer.toString("base64"),
         mimeType: file.type,
@@ -82,6 +83,8 @@ export async function POST(request: Request) {
       client,
     );
 
+    const { provider, model } = extracted;
+    const invoice = applyProvisionalIds(extracted.invoice);
     const issues = validateInvoice(invoice, client, knownKeys);
 
     return NextResponse.json<ExtractionResponse>({

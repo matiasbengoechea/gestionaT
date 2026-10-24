@@ -56,6 +56,12 @@ export interface InvoiceData {
   subtotal: number;
   impuestos: TaxLine[];
   percepciones: TaxLine[];
+  /** Retenciones sufridas (Ganancias, IIBB, IVA). No modifican el total del comprobante. */
+  retenciones?: TaxLine[];
+  /** El CUIT/NIF del emisor fue generado por el sistema porque no figuraba en el documento. */
+  emisorIdProvisorio?: boolean;
+  /** El CUIT/NIF del receptor fue generado por el sistema porque no figuraba en el documento. */
+  receptorIdProvisorio?: boolean;
   total: number;
   cae: string | null;
   caeVencimiento: string | null;
@@ -66,6 +72,23 @@ export interface InvoiceData {
   camposDudosos: string[];
   /** Confianza global de la extracción, de 0 a 1. */
   confianza: number;
+}
+
+/** Campos de la ficha contable que no forman parte del comprobante original. */
+export interface RowExtras {
+  /** Cuenta del proveedor / acreedor. */
+  cuenta: string;
+  cuentaTesoreria: string;
+  /** DD/MM/AAAA */
+  fechaAsiento: string;
+  /** DD/MM/AAAA */
+  fechaOperacion: string;
+  textoIdentif: string;
+  tfn1: string;
+  tfn2: string;
+  rectificativa: boolean;
+  observaciones: string;
+  descripcion: string;
 }
 
 export type IssueSeverity = "error" | "warning" | "info";

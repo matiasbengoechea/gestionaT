@@ -163,6 +163,7 @@ export function normalizeInvoice(raw: unknown): InvoiceData {
     subtotal,
     impuestos,
     percepciones,
+    retenciones: toArray(value.retenciones).map(normalizeTax),
     total,
     cae: toText(value.cae) || null,
     caeVencimiento: toISODate(value.caeVencimiento),
