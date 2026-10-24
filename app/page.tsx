@@ -1,6 +1,6 @@
 'use client'
 
-import { ChangeEvent, useMemo, useState } from 'react'
+import { ChangeEvent, useEffect, useMemo, useState } from 'react'
 import { CLIENTS, getClient } from '@/lib/clients'
 import { isValidCuit } from '@/lib/cuit'
 import { formatMoney } from '@/lib/format'
@@ -12,15 +12,20 @@ import {
 } from 'lucide-react'
 
 type Invoice = {
-  id: number; company: string; activity: string; year: string; date: string; entry: string
+  id: string; company: string; activity: string; year: string; date: string; entry: string
   number: string; supplier: string; total: string; status: 'green' | 'amber' | 'red'
   nif: string; concept: string; fileUrl?: string; fileName?: string; fileType?: string; provisionalNif?: boolean
   data?: InvoiceData; issues?: ValidationIssue[]; processing?: boolean; error?: string; reviewed?: boolean
 }
 
 /** Factura vacía para mostrar el detalle cuando todavía no hay ninguna cargada. */
+const newId = () =>
+  typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(16).slice(2)}`
+
 const blankInvoice: Invoice = {
-  id: 0,
+  id: '',
   company: '',
   activity: '',
   year: '',
@@ -89,8 +94,8 @@ function mapInvoice(
 
 export default function Home() {
   const [invoices, setInvoices] = useState<Invoice[]>([])
-  const [selectedId, setSelectedId] = useState<number | null>(null)
-  const [checked, setChecked] = useState<number[]>([])
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [checked, setChecked] = useState<string[]>([])
   const [saved, setSaved] = useState(false)
   const [sent, setSent] = useState(false)
   const [sending, setSending] = useState(false)
@@ -103,10 +108,51 @@ export default function Home() {
     [invoices, selectedId],
   )
 
-  const toggleChecked = (id: number) => setChecked((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id])
+  // Facturas que llegaron por mail (o por API) y quedaron guardadas en el servidor.
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/invoices')
+      .then((response) => response.json())
+      .then((payload) => {
+        if (cancelled || !payload?.ok || !Array.isArray(payload.invoices)) return
+        const mapped = (
+          payload.invoices as Array<{
+            id: string
+            fileName: string
+            clientId: string
+            invoice: InvoiceData
+            issues?: ValidationIssue[]
+          }>
+        ).map((record) => {
+          const client = getClient(record.clientId)
+          return {
+            id: record.id,
+            ...mapInvoice(
+              record.invoice,
+              record.issues ?? [],
+              client?.nombre ?? '',
+              client?.rubro ?? '',
+            ),
+            fileName: record.fileName,
+            reviewed: false,
+          } as Invoice
+        })
+        setInvoices((current) => {
+          const byId = new Map(current.map((invoice) => [invoice.id, invoice]))
+          for (const invoice of mapped) if (!byId.has(invoice.id)) byId.set(invoice.id, invoice)
+          return Array.from(byId.values())
+        })
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const toggleChecked = (id: string) => setChecked((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id])
   const updateSelected = (key: keyof Invoice, value: string) => setInvoices((current) => current.map((invoice) => invoice.id === selected.id ? { ...invoice, [key]: value } : invoice))
 
-  const markReviewed = (id: number) => setInvoices((current) => current.map((invoice) => invoice.id === id ? { ...invoice, reviewed: true } : invoice))
+  const markReviewed = (id: string) => setInvoices((current) => current.map((invoice) => invoice.id === id ? { ...invoice, reviewed: true } : invoice))
 
   const saveCurrent = () => {
     if (!selected) return
@@ -168,9 +214,9 @@ export default function Home() {
     const files = Array.from(event.target.files ?? [])
     if (!files.length) return
     const client = getClient(clientId) ?? CLIENTS[0]
-    const firstId = Math.max(0, ...invoices.map((invoice) => invoice.id)) + 1
+    const ids = files.map(() => newId())
     const placeholders = files.map((file, index): Invoice => ({
-      id: firstId + index,
+      id: ids[index],
       company: client.nombre,
       activity: client.rubro,
       year: '—',
@@ -188,13 +234,13 @@ export default function Home() {
       processing: true,
     }))
     setInvoices((current) => [...placeholders, ...current])
-    setSelectedId(firstId)
+    setSelectedId(ids[0])
     setChecked((current) => [...placeholders.map((invoice) => invoice.id), ...current])
     event.target.value = ''
 
     void (async () => {
       for (const [index, file] of files.entries()) {
-        const id = firstId + index
+        const id = ids[index]
         try {
           const form = new FormData()
           form.append('file', file)

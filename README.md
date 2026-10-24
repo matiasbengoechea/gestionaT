@@ -109,6 +109,56 @@ El motor distingue `origen: "local"` (comprobante AFIP) de `origen: "exterior"`
 La pantalla arranca con un **lote de demostración** de 6 facturas ficticias (5 del exterior y
 1 local) para mostrar ambos caminos. No tienen archivo asociado: son filas ya interpretadas.
 
+## Ingesta por mail
+
+`POST /api/inbound/email` recibe el webhook de un proveedor de email inbound, procesa los
+adjuntos con el mismo motor y guarda el resultado. La pantalla los muestra al abrirse.
+
+**Proveedores soportados** (el payload se normaliza en `lib/inbound/parse.ts`):
+
+- Postmark Inbound (JSON con adjuntos en base64).
+- SendGrid Inbound Parse y Mailgun Routes (multipart/form-data).
+- JSON genérico para pruebas manuales.
+
+**Variables**
+
+| Variable | Descripción |
+| --- | --- |
+| `INBOUND_SECRET` | Si está, exige `?secret=` o el header `x-inbound-secret`. |
+| `INBOUND_ALLOWED_DOMAINS` | Dominios de remitente permitidos, separados por coma. |
+| `SUPABASE_URL` | URL del proyecto Supabase. |
+| `SUPABASE_SERVICE_ROLE_KEY` | Clave de servicio (solo servidor). |
+
+Sin Supabase, las facturas se guardan en memoria del proceso (sirve para desarrollo, no
+para producción). Tabla esperada:
+
+```sql
+create table invoices (
+  id text primary key,
+  recibido_en timestamptz not null default now(),
+  origen text not null,
+  remitente text,
+  asunto text,
+  file_name text,
+  client_id text,
+  invoice jsonb not null,
+  issues jsonb not null,
+  provider text,
+  model text,
+  duration_ms int
+);
+```
+
+**Prueba manual**
+
+```bash
+curl -X POST http://localhost:3000/api/inbound/email \
+  -H 'Content-Type: application/json' \
+  -d "{\"from\":\"proveedor@ejemplo.com\",\"subject\":\"Factura\",\"attachments\":[{\"filename\":\"f.pdf\",\"contentType\":\"application/pdf\",\"contentBase64\":\"<base64>\"}]}"
+```
+
+`GET /api/invoices` devuelve las facturas guardadas y el backend activo.
+
 ## Conversión a pesos
 
 Las facturas en moneda extranjera se convierten con una cotización **con fuente y fecha**, que
