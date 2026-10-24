@@ -75,66 +75,6 @@ function mapInvoice(
   }
 }
 
-/** Salida: CSV con base imponible, impuestos y total en pesos. */
-function exportInvoices(invoices: Invoice[]) {
-  const withData = invoices.filter((invoice) => invoice.data)
-  if (withData.length === 0) return
-
-  const header = [
-    'archivo',
-    'tipo_comprobante',
-    'punto_venta',
-    'numero',
-    'fecha_emision',
-    'emisor',
-    'cuit_emisor',
-    'receptor',
-    'cuit_receptor',
-    'moneda',
-    'cotizacion',
-    'base_imponible',
-    'impuestos',
-    'total_ars',
-    'cae',
-    'cuentas',
-  ]
-
-  const rows = withData.map((invoice) => {
-    const data = invoice.data as InvoiceData
-    const rate = fxRate(data)
-    const impuestos = sumTaxes(data.impuestos) + sumTaxes(data.percepciones)
-    return [
-      invoice.fileName ?? '',
-      data.tipoComprobante,
-      data.puntoDeVenta,
-      data.numero,
-      data.fechaEmision ?? '',
-      data.emisor.razonSocial,
-      data.emisor.cuit,
-      data.receptor.razonSocial,
-      data.receptor.cuit,
-      data.moneda,
-      data.tipoCambio ?? '',
-      (data.subtotal * rate).toFixed(2),
-      (impuestos * rate).toFixed(2),
-      (data.total * rate).toFixed(2),
-      data.cae ?? '',
-      Array.from(new Set(data.items.map((item) => item.cuentaContable).filter(Boolean))).join(' | '),
-    ]
-  })
-
-  const csv = [header, ...rows]
-    .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(','))
-    .join('\r\n')
-
-  const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8;' })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = `gestionat-${new Date().toISOString().slice(0, 10)}.csv`
-  link.click()
-  URL.revokeObjectURL(url)
-}
 
 export default function Home() {
   const [invoices, setInvoices] = useState<Invoice[]>(initialInvoices)
@@ -165,9 +105,9 @@ export default function Home() {
     setSaved(true)
   }
 
+  // TODO: definir la accion de "enviar" (sistema contable, API, mail...).
   const saveAllAndSend = () => {
     setInvoices((current) => current.map((invoice) => (invoice.data ? { ...invoice, reviewed: true } : invoice)))
-    exportInvoices(invoices)
     setSent(true)
   }
 
