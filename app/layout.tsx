@@ -3,8 +3,8 @@ import type { Metadata, Viewport } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'v0 App',
-  description: 'Created with v0',
+  title: 'GestionaT · Identificación de facturas',
+  description: 'Revisión inteligente de facturas para equipos contables.',
   generator: 'v0.app',
   icons: {
     icon: [
