@@ -15,6 +15,7 @@ import { trafficLight } from "../lib/ui-mapping";
 import { normalizeInvoice, toISODate, toNumber } from "../lib/ai/normalize";
 import { documentKind, mimeForDocument } from "../lib/file-kind";
 import { escapeHtml, htmlToText } from "../lib/html";
+import { batchToXml, buildBatch } from "../lib/output/build";
 import { invoiceKey, validateInvoice } from "../lib/validate";
 import type { InvoiceData } from "../lib/types";
 
@@ -194,6 +195,33 @@ check(
   otherClient.includes("receptor_distinto_al_cliente"),
   otherClient,
 );
+
+console.log("\nSalida XML");
+const arsInvoice: InvoiceData = {
+  ...invoice,
+  moneda: "ARS",
+  tipoCambio: null,
+  subtotal: 2469.12,
+  total: 2987.64,
+};
+const batch = buildBatch([arsInvoice], CLIENTS[1].id);
+const xml = batchToXml(batch);
+check("declara XML", xml.startsWith('<?xml version="1.0" encoding="UTF-8"?>'), xml.slice(0, 40));
+check("incluye el lote", xml.includes(`<lote id="${batch.id}"`), batch.id);
+check("incluye tipo de comprobante", xml.includes("<tipoComprobante>Factura A</tipoComprobante>"));
+check("incluye total en pesos", xml.includes("<totalArs>2987.64</totalArs>"));
+check(
+  "incluye el renglón",
+  xml.includes("<descripcion>Bobina de acero laminada en caliente</descripcion>"),
+);
+check("incluye la cuenta contable", xml.includes("<cuentaContable>1.1.4.10</cuentaContable>"));
+const escapedXml = batchToXml(
+  buildBatch(
+    [{ ...arsInvoice, emisor: { ...arsInvoice.emisor, razonSocial: "A & B <S.A.>" } }],
+    "x",
+  ),
+);
+check("escapa caracteres XML", escapedXml.includes("A &amp; B &lt;S.A.&gt;"), escapedXml);
 
 console.log("\nLote de demostración");
 check("tiene 6 filas", DEMO_ROWS.length === 6, DEMO_ROWS.length);

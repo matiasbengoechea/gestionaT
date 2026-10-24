@@ -45,7 +45,7 @@ Abrí http://localhost:3000.
 3. La cola las procesa **de a una**: extracción con IA, normalización y validación contable.
 4. Cada factura queda con semáforo: verde (lista), ámbar (revisar), rojo (error).
 5. Revisás y corregís los campos, y aprobás.
-6. Exportás cabecera + detalle a CSV.
+6. Exportás cabecera + detalle a **XML** (acción principal) o a CSV.
 
 ## Arquitectura
 
@@ -91,6 +91,33 @@ Respuesta `200`:
 
 Errores: `{ "ok": false, "code": "...", "error": "..." }` con status `400`, `413`, `415`,
 `502` o `503` (falta API key).
+
+### `POST /api/outputs`
+
+Genera el lote de salida a partir de las facturas revisadas.
+
+```json
+{
+  "clientId": "metalurgica-aconcagua",
+  "invoices": [{ "tipoComprobante": "Factura A", "total": 2987.64, "items": [] }]
+}
+```
+
+Respuesta `200`:
+
+```json
+{
+  "ok": true,
+  "batch": { "id": "lote-...", "facturas": [], "metricas": {} },
+  "csv": "tipo_fila,lote,...",
+  "xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><lote ...>"
+}
+```
+
+El XML es un formato **neutro** (no AFIP): `lote` → `factura` → `emisor`/`receptor` →
+`lineas` → `linea`, con importes en pesos y la cotización usada. Sirve para importar en un
+sistema contable o como respaldo del lote. Cada adaptador específico puede mapear el mismo
+`OutputBatch` a su esquema.
 
 ### `GET /api/clients`
 

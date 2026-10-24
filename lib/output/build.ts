@@ -133,6 +133,79 @@ function cell(value: string | number | null): string {
  * Adaptador genérico: cabecera (`C`) y detalle (`D`) en un solo CSV.
  * Es el formato que casi cualquier importador contable sabe leer.
  */
+function xmlEscape(value: string | number | null | undefined): string {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+/**
+ * Adaptador XML genérico del lote: cabecera, partes y renglones.
+ *
+ * Es un XML neutro (no un formato AFIP) pensado para importar en un sistema
+ * contable o para guardar como respaldo del lote. Cada adaptador específico
+ * puede mapear este mismo `OutputBatch` a su esquema.
+ */
+export function batchToXml(batch: OutputBatch): string {
+  const lines: string[] = [];
+
+  lines.push('<?xml version="1.0" encoding="UTF-8"?>');
+  lines.push(
+    `<lote id="${xmlEscape(batch.id)}" creadoEn="${xmlEscape(batch.creadoEn)}" clienteId="${xmlEscape(batch.clienteId)}">`,
+  );
+  lines.push(
+    `  <metricas facturas="${batch.metricas.facturas}" renglones="${batch.metricas.renglones}" totalArs="${batch.metricas.totalArs.toFixed(2)}" />`,
+  );
+
+  for (const factura of batch.facturas) {
+    lines.push("  <factura>");
+    lines.push(`    <clave>${xmlEscape(factura.key)}</clave>`);
+    lines.push(`    <tipoComprobante>${xmlEscape(factura.tipoComprobante)}</tipoComprobante>`);
+    lines.push(`    <puntoDeVenta>${xmlEscape(factura.puntoDeVenta)}</puntoDeVenta>`);
+    lines.push(`    <numero>${xmlEscape(factura.numero)}</numero>`);
+    lines.push(`    <fechaEmision>${xmlEscape(factura.fechaEmision)}</fechaEmision>`);
+    lines.push("    <emisor>");
+    lines.push(`      <razonSocial>${xmlEscape(factura.emisor.razonSocial)}</razonSocial>`);
+    lines.push(`      <idFiscal>${xmlEscape(factura.emisor.idFiscal)}</idFiscal>`);
+    lines.push(`      <condicionIva>${xmlEscape(factura.emisor.condicionIva)}</condicionIva>`);
+    lines.push("    </emisor>");
+    lines.push("    <receptor>");
+    lines.push(`      <razonSocial>${xmlEscape(factura.receptor.razonSocial)}</razonSocial>`);
+    lines.push(`      <idFiscal>${xmlEscape(factura.receptor.idFiscal)}</idFiscal>`);
+    lines.push("    </receptor>");
+    lines.push(`    <moneda>${xmlEscape(factura.moneda)}</moneda>`);
+    lines.push(`    <tipoCambio>${xmlEscape(factura.tipoCambio)}</tipoCambio>`);
+    lines.push(`    <tipoCambioFuente>${xmlEscape(factura.tipoCambioFuente)}</tipoCambioFuente>`);
+    lines.push(`    <tipoCambioFecha>${xmlEscape(factura.tipoCambioFecha)}</tipoCambioFecha>`);
+    lines.push(`    <baseImponibleArs>${factura.baseImponibleArs.toFixed(2)}</baseImponibleArs>`);
+    lines.push(`    <impuestosArs>${factura.impuestosArs.toFixed(2)}</impuestosArs>`);
+    lines.push(`    <totalArs>${factura.totalArs.toFixed(2)}</totalArs>`);
+    lines.push(`    <cae>${xmlEscape(factura.cae)}</cae>`);
+    lines.push(`    <origen>${xmlEscape(factura.origen)}</origen>`);
+    lines.push("    <lineas>");
+
+    for (const linea of factura.lineas) {
+      lines.push("      <linea>");
+      lines.push(`        <descripcion>${xmlEscape(linea.descripcion)}</descripcion>`);
+      lines.push(`        <cantidad>${linea.cantidad}</cantidad>`);
+      lines.push(`        <precioUnitario>${linea.precioUnitario.toFixed(2)}</precioUnitario>`);
+      lines.push(`        <alicuotaIva>${linea.alicuotaIva}</alicuotaIva>`);
+      lines.push(`        <importe>${linea.importe.toFixed(2)}</importe>`);
+      lines.push(`        <cuentaContable>${xmlEscape(linea.cuentaContable)}</cuentaContable>`);
+      lines.push("      </linea>");
+    }
+
+    lines.push("    </lineas>");
+    lines.push("  </factura>");
+  }
+
+  lines.push("</lote>");
+  return lines.join("\n");
+}
+
 export function batchToCsv(batch: OutputBatch): string {
   const rows: Array<Array<string | number | null>> = [HEADER];
 

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { buildBatch, batchToCsv } from "@/lib/output/build";
+import { buildBatch, batchToCsv, batchToXml } from "@/lib/output/build";
 import type { InvoiceData } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -23,7 +23,7 @@ function isInvoice(value: unknown): value is InvoiceData {
 
 /**
  * Genera un lote de salida a partir de las facturas aprobadas.
- * Devuelve el lote canónico y el artefacto CSV listo para importar.
+ * Devuelve el lote canónico y los artefactos CSV y XML listos para importar.
  */
 export async function POST(request: Request) {
   let body: OutputRequest;
@@ -58,5 +58,6 @@ export async function POST(request: Request) {
     ok: true,
     batch,
     csv: batchToCsv(batch),
+    xml: batchToXml(batch),
   });
 }
