@@ -1,33 +1,144 @@
-# gestionaT
+# GestionaT
 
-This is a [Next.js](https://nextjs.org) project bootstrapped with [v0](https://v0.app).
+Software de gestión con IA para estudios contables, gestorías y empresas de alto volumen de
+facturación. La IA lee la factura, la interpreta, traduce los ítems, entiende el negocio del
+cliente y la deja lista para que el administrativo solo tenga que dar el ok.
 
-## Built with v0
+La pantalla de revisión está construida con [v0](https://v0.app/chat/projects/prj_4QuvqSYHMWDAbgxpyhCUgBimfQSm)
+y el motor de extracción y validación vive en este repo.
 
-This repository is linked to a [v0](https://v0.app) project. You can continue developing by visiting the link below -- start new chats to make changes, and v0 will push commits directly to this repo. Every merge to `main` will automatically deploy.
+## Stack
 
-[Continue working on v0 →](https://v0.app/chat/projects/prj_4QuvqSYHMWDAbgxpyhCUgBimfQSm)
+- **Next.js 16** (App Router) + **React 19** + **TypeScript**
+- **Tailwind CSS 4** + componentes de v0/shadcn
+- **Google Gemini** (`gemini-2.5-flash`) u **OpenAI** (`gpt-4.1-mini`) con salida estructurada
+- Deploy en **Vercel**
 
-## Getting Started
+## Cómo correr
 
-First, run the development server:
+Requiere **Node 18.18+** (probado con Node 22) y **pnpm**.
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
+pnpm install
+cp .env.example .env.local   # completá la API key
 pnpm dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Abrí http://localhost:3000.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Variables de entorno
 
-## Learn More
+| Variable | Descripción |
+| --- | --- |
+| `AI_PROVIDER` | `gemini` u `openai`. Si se omite, se detecta por la key presente. |
+| `GEMINI_API_KEY` | API key de Google AI Studio (recomendado: tier gratuito y lectura nativa de PDF). |
+| `GEMINI_MODEL` | Default `gemini-2.5-flash`. |
+| `OPENAI_API_KEY` | Alternativa. |
+| `OPENAI_MODEL` | Default `gpt-4.1-mini`. |
 
-To learn more, take a look at the following resources:
+`GET /api/health` indica qué proveedor está activo.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-- [v0 Documentation](https://v0.app/docs) - learn about v0 and how to use it.
+## Flujo
+
+1. Elegís la empresa (perfil de cliente con rubro y plan de cuentas).
+2. Subís una o varias facturas (PDF, PNG, JPG, WEBP; hasta 4 MB cada una).
+3. La cola las procesa **de a una**: extracción con IA, normalización y validación contable.
+4. Cada factura queda con semáforo: verde (lista), ámbar (revisar), rojo (error).
+5. Revisás y corregís los campos, y aprobás.
+6. Exportás cabecera + detalle a CSV.
+
+## Arquitectura
+
+El diseño completo está en [`ARCHITECTURE.md`](./ARCHITECTURE.md).
+
+| Archivo | Rol |
+| --- | --- |
+| `lib/ai/schema.ts` | Esquema canónico de extracción + traducción al dialecto de Gemini. |
+| `lib/ai/prompt.ts` | Prompt contable argentino y contexto de negocio del cliente. |
+| `lib/ai/normalize.ts` | Coerción de tipos: importes `1.234,56`, fechas `DD/MM/AAAA`, confianza. |
+| `lib/validate.ts` | Reglas de control (isomórficas: servidor y cliente). |
+| `lib/clients.ts` | Perfiles de cliente con plan de cuentas. |
+| `lib/use-invoice-queue.ts` | Cola secuencial, estado por factura y persistencia de aprobadas. |
+| `lib/ui-mapping.ts` | Traducción del modelo del motor al modelo de la pantalla. |
+| `lib/export-csv.ts` | Exportación cabecera/detalle para sistemas contables. |
+| `app/api/extract/route.ts` | Endpoint de extracción. |
+
+## Contrato de API
+
+### `POST /api/extract`
+
+`multipart/form-data`:
+
+| Campo | Tipo | Descripción |
+| --- | --- | --- |
+| `file` | File | PDF, PNG, JPG o WEBP. Máx. 4 MB. |
+| `clientId` | string | Id del perfil de cliente (`GET /api/clients`). |
+| `known` | string (JSON) | Opcional. Claves de comprobantes ya aprobados, para detectar duplicados. |
+
+Respuesta `200`:
+
+```json
+{
+  "ok": true,
+  "invoice": { "tipoComprobante": "Factura A", "total": 2987.64, "...": "..." },
+  "issues": [{ "code": "total_no_coincide", "message": "...", "severity": "error" }],
+  "meta": { "provider": "gemini", "model": "gemini-2.5-flash", "durationMs": 4200 }
+}
+```
+
+Errores: `{ "ok": false, "code": "...", "error": "..." }` con status `400`, `413`, `415`,
+`502` o `503` (falta API key).
+
+### `GET /api/clients`
+
+Perfiles de cliente con su plan de cuentas.
+
+### `GET /api/health`
+
+Proveedor y modelo de IA activos.
+
+## Facturas del exterior
+
+El motor distingue `origen: "local"` (comprobante AFIP) de `origen: "exterior"`
+(proveedor fuera de Argentina). En los comprobantes del exterior:
+
+- No se exige CUIT ni CAE; se usa el identificador fiscal tal como figura (VAT, NIF, EIN).
+- Se exige cotización si la moneda no es ARS.
+- Se agrega un aviso informativo, sin bloquear la aprobación.
+
+La pantalla arranca con un **lote de demostración** de 6 facturas ficticias (5 del exterior y
+1 local) para mostrar ambos caminos. No tienen archivo asociado: son filas ya interpretadas.
+
+## Controles que aplica el motor
+
+- Dígito verificador de CUIT (módulo 11) en emisor y receptor.
+- Coherencia `subtotal + impuestos + percepciones = total`.
+- Coherencia `cantidad × precio unitario = importe` por ítem.
+- Fechas válidas, no futuras y no anteriores a dos años.
+- CAE obligatorio en facturas y notas.
+- Tipo de cambio obligatorio si la moneda no es ARS.
+- Detección de comprobantes duplicados (emisor + tipo + punto de venta + número).
+- Señales del modelo: `camposDudosos` y confianza baja.
+
+## Verificación sin API key
+
+```bash
+pnpm verify
+```
+
+Corre las reglas de CUIT, parseo de importes y fechas, normalización, validación y duplicados
+sobre casos conocidos.
+
+## Deploy en Vercel
+
+1. Importá el repo en Vercel.
+2. Cargá `GEMINI_API_KEY` (o `OPENAI_API_KEY`) en *Environment Variables*.
+3. Deploy. No hace falta base de datos: las facturas aprobadas se guardan en el navegador.
+
+## Próximos pasos
+
+- Lectura del QR de ARCA antes del modelo (determinística, gratis y auditable).
+- Estados por campo (`seguro` / `supuesto` / `falta`) con origen y nota.
+- Conversión de moneda con fuente y fecha.
+- Memoria por proveedor para la imputación contable.
+- Persistencia real (Postgres) y multiusuario.
