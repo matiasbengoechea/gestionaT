@@ -6,7 +6,7 @@ import { extractWithOpenAICompatible } from "./openai";
  * reutilizamos el cliente cambiando la base y agregando los headers de ruteo.
  */
 export async function extractWithOpenRouter(
-  input: { base64: string; mimeType: string; fileName: string },
+  input: { base64: string; mimeType: string; fileName: string; text?: string },
   client: ClientProfile,
   model: string,
   apiKey: string,

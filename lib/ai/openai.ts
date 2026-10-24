@@ -32,7 +32,7 @@ function contentToText(
  * (OpenAI y OpenRouter comparten el mismo contrato).
  */
 export async function extractWithOpenAICompatible(
-  input: { base64: string; mimeType: string; fileName: string },
+  input: { base64: string; mimeType: string; fileName: string; text?: string },
   client: ClientProfile,
   model: string,
   apiKey: string,
@@ -42,8 +42,12 @@ export async function extractWithOpenAICompatible(
   const label = options.providerLabel ?? "OpenAI";
   const dataUrl = `data:${input.mimeType};base64,${input.base64}`;
 
-  const filePart =
-    input.mimeType === "application/pdf"
+  const filePart = input.text
+    ? {
+        type: "text",
+        text: `Contenido del comprobante (texto extraído de un HTML):\n\n${input.text}`,
+      }
+    : input.mimeType === "application/pdf"
       ? {
           type: "file",
           file: { filename: input.fileName, file_data: dataUrl },
@@ -97,7 +101,7 @@ export async function extractWithOpenAICompatible(
 }
 
 export async function extractWithOpenAI(
-  input: { base64: string; mimeType: string; fileName: string },
+  input: { base64: string; mimeType: string; fileName: string; text?: string },
   client: ClientProfile,
   model: string,
   apiKey: string,

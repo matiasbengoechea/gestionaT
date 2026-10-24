@@ -13,6 +13,8 @@ import { CLIENTS } from "../lib/clients";
 import { DEMO_ROWS } from "../lib/demo-rows";
 import { trafficLight } from "../lib/ui-mapping";
 import { normalizeInvoice, toISODate, toNumber } from "../lib/ai/normalize";
+import { documentKind, mimeForDocument } from "../lib/file-kind";
+import { escapeHtml, htmlToText } from "../lib/html";
 import { invoiceKey, validateInvoice } from "../lib/validate";
 import type { InvoiceData } from "../lib/types";
 
@@ -54,6 +56,22 @@ check('"15/03/2025" -> 2025-03-15', toISODate("15/03/2025") === "2025-03-15");
 check('"2025-3-5" -> 2025-03-05', toISODate("2025-3-5") === "2025-03-05");
 check('"05-03-25" -> 2025-03-05', toISODate("05-03-25") === "2025-03-05");
 check("texto inválido -> null", toISODate("sin fecha") === null);
+
+console.log("\nHTML de facturas");
+const html = `<!doctype html><html><head><style>.x{color:red}</style><script>alert(1)</script></head><body><h1>Factura A</h1><p>Total: $1.234,56</p><table><tr><td>IVA</td><td>21%</td></tr></table><img alt="sello" src="sello.png"></body></html>`;
+const htmlText = htmlToText(html);
+check("quita scripts y estilos", !htmlText.includes("alert") && !htmlText.includes("color:red"), htmlText);
+check("conserva el texto visible", htmlText.includes("Factura A") && htmlText.includes("1.234,56"), htmlText);
+check("separa celdas de la tabla", htmlText.includes("IVA") && htmlText.includes("21%"), htmlText);
+check("conserva el alt de las imágenes", htmlText.includes("sello"), htmlText);
+check("decodifica entidades", htmlToText("A &amp; B &nbsp; C") === "A & B C", htmlToText("A &amp; B &nbsp; C"));
+check("HTML sin texto devuelve vacío", htmlToText("<img src='x.png'>") === "", htmlToText("<img src='x.png'>"));
+check("escapa texto para el visor", escapeHtml("<b>A & B</b>") === "&lt;b&gt;A &amp; B&lt;/b&gt;");
+check("detecta HTML por extensión", documentKind("factura.HTML", "") === "html");
+check("detecta HTML por MIME", documentKind("adjunto", "text/html") === "html");
+check("detecta TXT", documentKind("factura.txt", "application/octet-stream") === "text");
+check("rechaza binarios", documentKind("virus.exe", "application/octet-stream") === null);
+check("MIME confiable para HTML", mimeForDocument("html", "x", "application/octet-stream") === "text/html");
 
 console.log("\nNormalización de una extracción cruda");
 const raw = {

@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { getClient } from "@/lib/clients";
 import { extractInvoice, MissingApiKeyError } from "@/lib/ai";
+import { documentKind, mimeForDocument } from "@/lib/file-kind";
 import { applyFx } from "@/lib/fx";
+import { htmlToText } from "@/lib/html";
 import { validateInvoice } from "@/lib/validate";
 import type { ErrorResponse, ExtractionResponse } from "@/lib/types";
 
@@ -11,12 +13,6 @@ export const maxDuration = 60;
 /** Límite prudente: Vercel corta el body de las funciones en ~4.5 MB. */
 const MAX_BYTES = 4 * 1024 * 1024;
 
-const ALLOWED_TYPES = new Set([
-  "application/pdf",
-  "image/png",
-  "image/jpeg",
-  "image/webp",
-]);
 
 function fail(code: string, error: string, status: number) {
   return NextResponse.json<ErrorResponse>({ ok: false, code, error }, { status });
@@ -35,10 +31,11 @@ export async function POST(request: Request) {
     return fail("missing_file", "Falta el archivo de la factura.", 400);
   }
 
-  if (!ALLOWED_TYPES.has(file.type)) {
+  const kind = documentKind(file.name, file.type);
+  if (!kind) {
     return fail(
       "unsupported_type",
-      `Formato no soportado (${file.type || "desconocido"}). Subí un PDF, PNG, JPG o WEBP.`,
+      `Formato no soportado (${file.type || "desconocido"}). Subí un PDF, PNG, JPG, WEBP, HTML o TXT.`,
       415,
     );
   }
@@ -74,11 +71,30 @@ export async function POST(request: Request) {
 
   try {
     const buffer = Buffer.from(await file.arrayBuffer());
+    const mimeType = mimeForDocument(kind, file.name, file.type);
+
+    // HTML y texto se mandan como texto: el modelo no necesita el markup.
+    let text: string | undefined;
+    if (kind === "html") {
+      text = htmlToText(buffer.toString("utf8"));
+    } else if (kind === "text") {
+      text = buffer.toString("utf8").trim();
+    }
+
+    if ((kind === "html" || kind === "text") && !text) {
+      return fail(
+        "empty_document",
+        "El archivo no tiene texto legible. Si la factura está como imagen dentro del HTML, subila como PDF o imagen.",
+        422,
+      );
+    }
+
     const { invoice, provider, model } = await extractInvoice(
       {
         base64: buffer.toString("base64"),
-        mimeType: file.type,
+        mimeType,
         fileName: file.name,
+        text,
       },
       client,
     );

@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { extractInvoice } from "@/lib/ai";
 import { DEFAULT_CLIENT_ID, getClient } from "@/lib/clients";
+import { documentKind, mimeForDocument } from "@/lib/file-kind";
 import { applyFx } from "@/lib/fx";
-import { parseInbound } from "@/lib/inbound/parse";
+import { escapeHtml, htmlToText } from "@/lib/html";
+import { parseInbound, type InboundEmail } from "@/lib/inbound/parse";
 import { saveInvoice, uploadInvoiceFile } from "@/lib/store";
 import type { ValidationIssue } from "@/lib/types";
 import { validateInvoice } from "@/lib/validate";
@@ -11,15 +13,97 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 
 const MAX_BYTES = 4 * 1024 * 1024;
-const ALLOWED_TYPES = new Set([
-  "application/pdf",
-  "image/png",
-  "image/jpeg",
-  "image/webp",
-]);
 
 function newId(): string {
   return `mail-${Date.now().toString(36)}-${Math.random().toString(16).slice(2, 8)}`;
+}
+
+interface InboundDocument {
+  fileName: string;
+  mimeType: string;
+  base64: string;
+  /** Texto ya extraído para HTML/TXT. */
+  text?: string;
+}
+
+/**
+ * Arma la lista de documentos a procesar: adjuntos soportados y, si el mail
+ * no trae adjuntos, el cuerpo HTML o de texto.
+ */
+function buildDocuments(
+  parsed: InboundEmail,
+  resultados: Array<Record<string, unknown>>,
+): InboundDocument[] {
+  const documents: InboundDocument[] = [];
+
+  for (const attachment of parsed.attachments) {
+    const kind = documentKind(attachment.filename, attachment.mimeType);
+    if (!kind) {
+      resultados.push({
+        fileName: attachment.filename,
+        ok: false,
+        error: `Formato no soportado (${attachment.mimeType || "desconocido"}).`,
+      });
+      continue;
+    }
+
+    const size = Buffer.from(attachment.base64, "base64").length;
+    if (size > MAX_BYTES) {
+      resultados.push({
+        fileName: attachment.filename,
+        ok: false,
+        error: `El adjunto supera los 4 MB (${(size / (1024 * 1024)).toFixed(1)} MB).`,
+      });
+      continue;
+    }
+
+    const mimeType = mimeForDocument(kind, attachment.filename, attachment.mimeType);
+
+    if (kind === "html" || kind === "text") {
+      const raw = Buffer.from(attachment.base64, "base64").toString("utf8");
+      const text = kind === "html" ? htmlToText(raw) : raw.trim();
+      if (!text) {
+        resultados.push({
+          fileName: attachment.filename,
+          ok: false,
+          error:
+            "El archivo no tiene texto legible. Si la factura está como imagen dentro del HTML, subila como PDF o imagen.",
+        });
+        continue;
+      }
+      documents.push({ fileName: attachment.filename, mimeType, base64: attachment.base64, text });
+    } else {
+      documents.push({ fileName: attachment.filename, mimeType, base64: attachment.base64 });
+    }
+  }
+
+  // Sin adjuntos: la factura puede venir en el cuerpo del mail.
+  if (parsed.attachments.length === 0) {
+    const html = parsed.html?.trim();
+    const plain = parsed.text?.trim();
+
+    if (html) {
+      const text = htmlToText(html);
+      if (text) {
+        documents.push({
+          fileName: "factura.html",
+          mimeType: "text/html",
+          base64: Buffer.from(html).toString("base64"),
+          text,
+        });
+      }
+    } else if (plain) {
+      const htmlDoc = `<!doctype html><meta charset="utf-8"><pre style="white-space:pre-wrap;font-family:system-ui,sans-serif;padding:24px">${escapeHtml(plain)}</pre>`;
+      documents.push({
+        fileName: "factura.html",
+        mimeType: "text/html",
+        base64: Buffer.from(htmlDoc).toString("base64"),
+        text: plain,
+      });
+    }
+  }
+
+  return documents;
 }
 
 /**
@@ -75,44 +159,27 @@ export async function POST(request: Request) {
     }
   }
 
-  if (parsed.attachments.length === 0) {
+  const client = getClient(parsed.clientId) ?? getClient(DEFAULT_CLIENT_ID)!;
+  const resultados: Array<Record<string, unknown>> = [];
+  const documents = buildDocuments(parsed, resultados);
+
+  if (documents.length === 0 && resultados.length === 0) {
     return NextResponse.json(
-      { ok: false, error: "El mail no tiene adjuntos." },
+      { ok: false, error: "El mail no tiene adjuntos ni cuerpo con texto." },
       { status: 422 },
     );
   }
 
-  const client = getClient(parsed.clientId) ?? getClient(DEFAULT_CLIENT_ID)!;
-  const resultados: Array<Record<string, unknown>> = [];
-
-  for (const attachment of parsed.attachments) {
-    if (!ALLOWED_TYPES.has(attachment.mimeType)) {
-      resultados.push({
-        fileName: attachment.filename,
-        ok: false,
-        error: `Formato no soportado (${attachment.mimeType}).`,
-      });
-      continue;
-    }
-
-    const size = Buffer.from(attachment.base64, "base64").length;
-    if (size > MAX_BYTES) {
-      resultados.push({
-        fileName: attachment.filename,
-        ok: false,
-        error: `El adjunto supera los 4 MB (${(size / (1024 * 1024)).toFixed(1)} MB).`,
-      });
-      continue;
-    }
-
+  for (const document of documents) {
     const startedAt = Date.now();
 
     try {
       const { invoice, provider, model } = await extractInvoice(
         {
-          base64: attachment.base64,
-          mimeType: attachment.mimeType,
-          fileName: attachment.filename,
+          base64: document.base64,
+          mimeType: document.mimeType,
+          fileName: document.fileName,
+          text: document.text,
         },
         client,
       );
@@ -128,11 +195,11 @@ export async function POST(request: Request) {
       }
 
       const id = newId();
-      const safeName = attachment.filename.replace(/[^a-zA-Z0-9._-]/g, "_") || "factura";
+      const safeName = document.fileName.replace(/[^a-zA-Z0-9._-]/g, "_") || "factura";
       const filePath = await uploadInvoiceFile(
         `${id}/${safeName}`,
-        attachment.base64,
-        attachment.mimeType,
+        document.base64,
+        document.mimeType,
       );
 
       const record = {
@@ -141,7 +208,7 @@ export async function POST(request: Request) {
         origen: "email" as const,
         remitente: parsed.from,
         asunto: parsed.subject,
-        fileName: attachment.filename,
+        fileName: document.fileName,
         filePath: filePath ?? undefined,
         clientId: client.id,
         invoice: fx.invoice,
@@ -154,7 +221,7 @@ export async function POST(request: Request) {
       await saveInvoice(record);
 
       resultados.push({
-        fileName: attachment.filename,
+        fileName: document.fileName,
         ok: true,
         id: record.id,
         comprobante: `${fx.invoice.tipoComprobante} ${fx.invoice.puntoDeVenta}-${fx.invoice.numero}`,
@@ -164,7 +231,7 @@ export async function POST(request: Request) {
       });
     } catch (error) {
       resultados.push({
-        fileName: attachment.filename,
+        fileName: document.fileName,
         ok: false,
         error: error instanceof Error ? error.message : "Error inesperado.",
       });

@@ -41,7 +41,7 @@ Abrí http://localhost:3000.
 ## Flujo
 
 1. Elegís la empresa (perfil de cliente con rubro y plan de cuentas).
-2. Subís una o varias facturas (PDF, PNG, JPG, WEBP; hasta 4 MB cada una).
+2. Subís una o varias facturas (PDF, PNG, JPG, WEBP, HTML o TXT; hasta 4 MB cada una).
 3. La cola las procesa **de a una**: extracción con IA, normalización y validación contable.
 4. Cada factura queda con semáforo: verde (lista), ámbar (revisar), rojo (error).
 5. Revisás y corregís los campos, y aprobás.
@@ -54,6 +54,8 @@ El diseño completo está en [`ARCHITECTURE.md`](./ARCHITECTURE.md).
 | Archivo | Rol |
 | --- | --- |
 | `lib/ai/schema.ts` | Esquema canónico de extracción + traducción al dialecto de Gemini. |
+| `lib/html.ts` | HTML a texto plano para el modelo y escape para el visor. |
+| `lib/file-kind.ts` | Clasificación de archivos por MIME/extensión (PDF, imagen, HTML, TXT). |
 | `lib/ai/prompt.ts` | Prompt contable argentino y contexto de negocio del cliente. |
 | `lib/ai/normalize.ts` | Coerción de tipos: importes `1.234,56`, fechas `DD/MM/AAAA`, confianza. |
 | `lib/validate.ts` | Reglas de control (isomórficas: servidor y cliente). |
@@ -169,6 +171,21 @@ curl -X POST http://localhost:3000/api/inbound/email \
 
 `GET /api/invoices` devuelve las facturas guardadas y el backend activo. Acepta
 `?since=<ISO>` para traer solo las recibidas desde ese momento.
+
+### Facturas en HTML
+
+Se aceptan comprobantes HTML (adjunto o cuerpo del mail) y también TXT. El motor no
+renderiza el HTML: extrae el texto visible (`lib/html.ts`), lo manda al modelo y guarda el
+HTML original para el visor. El visor lo muestra en un `iframe` con `sandbox` para que no
+ejecute scripts.
+
+Limitación: si la factura está embebida como **imagen** dentro del HTML, el texto no alcanza.
+En ese caso hay que subir el PDF o la imagen.
+
+```bash
+pnpm inbound factura.html            # adjunto HTML
+pnpm inbound factura.html --body     # HTML en el cuerpo del mail
+```
 
 ### Actualización en vivo
 

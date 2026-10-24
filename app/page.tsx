@@ -109,6 +109,17 @@ function mapInvoice(
   }
 }
 
+function fileTypeFor(fileName: string, provided?: string): string {
+  const name = fileName.toLowerCase()
+  if (name.endsWith('.pdf')) return 'application/pdf'
+  if (name.endsWith('.html') || name.endsWith('.htm')) return 'text/html'
+  if (name.endsWith('.txt')) return 'text/plain'
+  if (name.endsWith('.jpg') || name.endsWith('.jpeg')) return 'image/jpeg'
+  if (name.endsWith('.webp')) return 'image/webp'
+  if (name.endsWith('.png')) return 'image/png'
+  return provided || 'image/png'
+}
+
 function mapRecord(record: ApiInvoice): Invoice {
   const client = getClient(record.clientId)
   return {
@@ -116,7 +127,7 @@ function mapRecord(record: ApiInvoice): Invoice {
     ...mapInvoice(record.invoice, record.issues ?? [], client?.nombre ?? '', client?.rubro ?? ''),
     fileName: record.fileName,
     fileUrl: record.fileUrl,
-    fileType: record.fileName.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/png',
+    fileType: fileTypeFor(record.fileName),
     reviewed: false,
     recibidoEn: record.recibidoEn,
     remitente: record.remitente,
@@ -328,7 +339,7 @@ export default function Home() {
       concept: 'Procesando con IA…',
       fileUrl: URL.createObjectURL(file),
       fileName: file.name,
-      fileType: file.type,
+      fileType: fileTypeFor(file.name, file.type),
       processing: true,
     }))
     setInvoices((current) => [...placeholders, ...current])
@@ -385,7 +396,7 @@ export default function Home() {
   return (
     <main className="flex h-screen min-w-[1080px] flex-col overflow-hidden bg-background text-foreground">
       <header className="flex h-14 shrink-0 items-center justify-between border-b bg-card px-5">
-        <div className="flex items-center gap-5"><button className="flex items-center gap-2 text-sm font-semibold"><ArrowLeft className="size-4 text-muted-foreground" /> Identificación de facturas</button><label className="button-primary cursor-pointer"><Upload className="size-4" /> Subir Facturas<input type="file" className="sr-only" accept=".pdf,.png,.jpg,.jpeg" multiple onChange={handleUpload} /></label><button className="flex items-center gap-2 text-sm font-medium text-destructive hover:opacity-75"><Trash2 className="size-4" /> Eliminar</button></div>
+        <div className="flex items-center gap-5"><button className="flex items-center gap-2 text-sm font-semibold"><ArrowLeft className="size-4 text-muted-foreground" /> Identificación de facturas</button><label className="button-primary cursor-pointer"><Upload className="size-4" /> Subir Facturas<input type="file" className="sr-only" accept=".pdf,.png,.jpg,.jpeg,.webp,.html,.htm,.txt" multiple onChange={handleUpload} /></label><button className="flex items-center gap-2 text-sm font-medium text-destructive hover:opacity-75"><Trash2 className="size-4" /> Eliminar</button></div>
         <div className="flex items-center gap-1"><button className="toolbar-button"><Folders className="size-4" /> Plan Contable</button><button className="toolbar-button"><Tag className="size-4" /> Etiquetas</button><button className="icon-button" aria-label="Ayuda"><CircleHelp className="size-5" /></button><div className="ml-3 size-7 rounded-full bg-primary text-center text-xs font-bold leading-7 text-primary-foreground">AG</div></div>
       </header>
 
@@ -404,7 +415,7 @@ export default function Home() {
           </div><div className="flex shrink-0 items-center justify-end gap-3 border-t bg-muted/30 px-5 py-3">{sentInfo ? <span className="mr-auto text-xs text-muted-foreground">{sentInfo.facturas} facturas · {sentInfo.renglones} renglones · {formatMoney(sentInfo.totalArs, 'ARS')}</span> : null}{sendError ? <span className="mr-auto text-xs text-rose-600">{sendError}</span> : null}<button className="button-secondary">Cancelar</button><button onClick={saveAllAndSend} disabled={sending || invoices.every((invoice) => !invoice.data)} className="button-primary disabled:opacity-40">{sent ? <Check className="size-4" /> : null}{sending ? 'Enviando…' : sent ? 'Enviado' : 'Guardar todo y enviar'}</button></div>
         </section>
 
-        <aside className="flex min-w-[380px] flex-[0.85] flex-col bg-slate-100"><div className="flex h-12 shrink-0 items-center gap-1 border-b bg-card px-3"><button className="viewer-button"><Plus /></button><button className="viewer-button"><ZoomOut /></button><button className="viewer-button"><ArrowLeft /></button><button className="viewer-button"><ArrowRight /></button><button className="viewer-button"><Move /></button><button className="viewer-button"><Undo2 /></button><button className="viewer-button"><Redo2 /></button><div className="ml-auto flex items-center gap-2 text-xs text-muted-foreground"><span>1 / 1</span><button className="viewer-button"><Maximize2 /></button></div></div><div className="min-h-0 flex-1 overflow-auto p-8">{selected.fileUrl ? (selected.fileType === 'application/pdf' ? <iframe title={`Documento ${selected.fileName}`} src={selected.fileUrl} className="h-full min-h-[720px] w-full rounded bg-white shadow-sm" /> : <div className="flex min-h-[720px] items-start justify-center rounded bg-white p-5 shadow-sm"><img src={selected.fileUrl} alt={`Factura cargada ${selected.fileName}`} className="max-h-[850px] max-w-full object-contain" /></div>) : <div className="mx-auto flex min-h-[720px] max-w-[620px] flex-col items-center justify-center gap-3 rounded bg-white p-12 text-center shadow-sm"><FileText className="size-10 text-slate-300" /><p className="text-sm font-medium text-slate-600">Sin documento para mostrar</p><p className="text-xs text-slate-400">Subí una factura para verla acá junto a los datos extraídos.</p></div>}</div></aside>
+        <aside className="flex min-w-[380px] flex-[0.85] flex-col bg-slate-100"><div className="flex h-12 shrink-0 items-center gap-1 border-b bg-card px-3"><button className="viewer-button"><Plus /></button><button className="viewer-button"><ZoomOut /></button><button className="viewer-button"><ArrowLeft /></button><button className="viewer-button"><ArrowRight /></button><button className="viewer-button"><Move /></button><button className="viewer-button"><Undo2 /></button><button className="viewer-button"><Redo2 /></button><div className="ml-auto flex items-center gap-2 text-xs text-muted-foreground"><span>1 / 1</span><button className="viewer-button"><Maximize2 /></button></div></div><div className="min-h-0 flex-1 overflow-auto p-8">{selected.fileUrl ? (selected.fileType === 'application/pdf' || selected.fileType === 'text/html' || selected.fileType === 'text/plain' ? <iframe title={`Documento ${selected.fileName}`} src={selected.fileUrl} sandbox={selected.fileType === 'text/html' ? '' : undefined} className="h-full min-h-[720px] w-full rounded bg-white shadow-sm" /> : <div className="flex min-h-[720px] items-start justify-center rounded bg-white p-5 shadow-sm"><img src={selected.fileUrl} alt={`Factura cargada ${selected.fileName}`} className="max-h-[850px] max-w-full object-contain" /></div>) : <div className="mx-auto flex min-h-[720px] max-w-[620px] flex-col items-center justify-center gap-3 rounded bg-white p-12 text-center shadow-sm"><FileText className="size-10 text-slate-300" /><p className="text-sm font-medium text-slate-600">Sin documento para mostrar</p><p className="text-xs text-slate-400">Subí una factura para verla acá junto a los datos extraídos.</p></div>}</div></aside>
       </div>
 
       {arrival ? (

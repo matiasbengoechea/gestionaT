@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <title>Factura A 0003-00001234</title>
+    <style>
+      body { font-family: Arial, sans-serif; color: #1a1a1a; margin: 32px; }
+      h1 { font-size: 20px; margin: 0; }
+      .muted { color: #666; font-size: 12px; }
+      .box { border: 1px solid #999; padding: 12px; margin: 16px 0; }
+      table { width: 100%; border-collapse: collapse; font-size: 12px; }
+      th, td { border-bottom: 1px solid #ddd; padding: 6px 8px; text-align: left; }
+      th { background: #f2f2f2; }
+      .right { text-align: right; }
+      .total { font-size: 14px; font-weight: bold; }
+    </style>
+  </head>
+  <body>
+    <h1>ACEROS DEL SUR S.A.</h1>
+    <p class="muted">Av. Industrial 500 - Rosario, Santa Fe</p>
+    <p class="muted">CUIT: 30-71234567-1 · IVA Responsable Inscripto</p>
+
+    <div class="box">
+      <strong>FACTURA A</strong><br />
+      Nº 0003-00001234<br />
+      Fecha: 15/09/2026
+    </div>
+
+    <div class="box">
+      <strong>SEÑOR(ES): METALÚRGICA ACONCAGUA S.A.</strong><br />
+      CUIT: 30-71456789-2<br />
+      Domicilio: Parque Industrial, San Nicolás, Buenos Aires<br />
+      Condición IVA: Responsable Inscripto
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Descripción</th>
+          <th class="right">Cant.</th>
+          <th class="right">P. unit.</th>
+          <th class="right">IVA</th>
+          <th class="right">Importe</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Bobina de acero laminada en caliente</td>
+          <td class="right">2 tn</td>
+          <td class="right">1.234,56</td>
+          <td class="right">21%</td>
+          <td class="right">2.469,12</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <table style="margin-top: 16px; width: 320px; margin-left: auto">
+      <tbody>
+        <tr>
+          <td>Subtotal</td>
+          <td class="right">2.469,12</td>
+        </tr>
+        <tr>
+          <td>IVA 21%</td>
+          <td class="right">518,52</td>
+        </tr>
+        <tr>
+          <td class="total">Total</td>
+          <td class="right total">2.987,64</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p class="muted">Vencimiento: 15/10/2026 · Condición de pago: cuenta corriente 30 días</p>
+    <p class="muted">CAE Nº: 74123456789012 · Vto. CAE: 25/09/2026</p>
+    <p class="muted">Comprobante Autorizado - ORIGINAL</p>
+  </body>
+</html>

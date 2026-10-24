@@ -83,6 +83,11 @@ export interface ExtractInput {
   base64: string;
   mimeType: string;
   fileName: string;
+  /**
+   * Texto ya extraído (por ejemplo, de un HTML o del cuerpo de un mail).
+   * Si viene, el modelo lee esto en lugar del binario.
+   */
+  text?: string;
 }
 
 export interface ExtractResult {

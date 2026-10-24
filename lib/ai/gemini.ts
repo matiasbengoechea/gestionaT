@@ -15,7 +15,7 @@ interface GeminiResponse {
 }
 
 export async function extractWithGemini(
-  input: { base64: string; mimeType: string },
+  input: { base64: string; mimeType: string; text?: string },
   client: ClientProfile,
   model: string,
   apiKey: string,
@@ -48,7 +48,9 @@ export async function extractWithGemini(
         {
           role: "user",
           parts: [
-            { inlineData: { mimeType: input.mimeType, data: input.base64 } },
+            input.text
+              ? { text: `Contenido del comprobante (texto extraído de un HTML):\n\n${input.text}` }
+              : { inlineData: { mimeType: input.mimeType, data: input.base64 } },
             { text: buildUserPrompt(client) },
           ],
         },

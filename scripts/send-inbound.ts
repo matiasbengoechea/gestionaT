@@ -4,6 +4,7 @@
  * Uso:
  *   pnpm inbound samples/factura-a-aceros.pdf
  *   pnpm inbound samples/factura-a-aceros.pdf --from proveedor@ejemplo.com
+ *   pnpm inbound factura.html --body     # HTML en el cuerpo, sin adjunto
  *
  * Requiere el servidor corriendo (`pnpm dev`). Si `INBOUND_SECRET` está en
  * `.env.local`, lo usa automáticamente.
@@ -18,6 +19,9 @@ const MIME: Record<string, string> = {
   ".jpg": "image/jpeg",
   ".jpeg": "image/jpeg",
   ".webp": "image/webp",
+  ".html": "text/html",
+  ".htm": "text/html",
+  ".txt": "text/plain",
 };
 
 function arg(name: string, fallback: string): string {
@@ -38,6 +42,7 @@ async function main() {
   const from = arg("from", "proveedor@ejemplo.com");
   const subject = arg("subject", `Factura ${basename(file)}`);
   const secret = (process.env.INBOUND_SECRET ?? "").trim();
+  const asBody = process.argv.includes("--body");
 
   const content = readFileSync(file);
   const mimeType = MIME[extname(file).toLowerCase()] ?? "application/octet-stream";
@@ -45,22 +50,30 @@ async function main() {
   const url = new URL(`${base}/api/inbound/email`);
   if (secret) url.searchParams.set("secret", secret);
 
-  console.log(`→ ${file} (${(content.length / 1024).toFixed(0)} KB) desde ${from}`);
+  console.log(
+    `→ ${file} (${(content.length / 1024).toFixed(0)} KB) desde ${from}${asBody ? " (en el cuerpo)" : ""}`,
+  );
+
+  const payloadBody = asBody
+    ? mimeType === "text/html"
+      ? { from, subject, html: content.toString("utf8"), attachments: [] }
+      : { from, subject, text: content.toString("utf8"), attachments: [] }
+    : {
+        from,
+        subject,
+        attachments: [
+          {
+            filename: basename(file),
+            contentType: mimeType,
+            contentBase64: content.toString("base64"),
+          },
+        ],
+      };
 
   const response = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      from,
-      subject,
-      attachments: [
-        {
-          filename: basename(file),
-          contentType: mimeType,
-          contentBase64: content.toString("base64"),
-        },
-      ],
-    }),
+    body: JSON.stringify(payloadBody),
   });
 
   const payload = await response.json().catch(() => null);

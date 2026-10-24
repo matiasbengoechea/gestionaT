@@ -18,6 +18,10 @@ export interface InboundEmail {
   from: string;
   subject: string;
   clientId?: string;
+  /** Cuerpo HTML del mail, para facturas que vienen en el cuerpo. */
+  html?: string;
+  /** Cuerpo en texto plano, como alternativa al HTML. */
+  text?: string;
   attachments: InboundAttachment[];
 }
 
@@ -44,6 +48,49 @@ async function parseResend(body: Record<string, unknown>): Promise<InboundEmail 
     throw new Error("Falta RESEND_API_KEY para descargar los adjuntos del mail.");
   }
 
+  const [emailBody, attachments] = await Promise.all([
+    fetchResendBody(apiKey, emailId),
+    fetchResendAttachments(apiKey, emailId),
+  ]);
+
+  return {
+    from: emailAddress(String(data.from ?? "")),
+    subject: String(data.subject ?? ""),
+    html: emailBody.html,
+    text: emailBody.text,
+    attachments,
+  };
+}
+
+/** El webhook de Resend solo trae metadata; el cuerpo se pide aparte. */
+async function fetchResendBody(
+  apiKey: string,
+  emailId: string,
+): Promise<{ html?: string; text?: string }> {
+  const response = await fetch(
+    `https://api.resend.com/emails/receiving/${encodeURIComponent(emailId)}`,
+    {
+      headers: { Authorization: `Bearer ${apiKey}`, accept: "application/json" },
+      cache: "no-store",
+    },
+  );
+
+  // Si el endpoint no devuelve el cuerpo, seguimos con los adjuntos.
+  if (!response.ok) return {};
+
+  const payload = (await response.json().catch(() => null)) as
+    | { html?: string; text?: string }
+    | null;
+  return {
+    html: typeof payload?.html === "string" ? payload.html : undefined,
+    text: typeof payload?.text === "string" ? payload.text : undefined,
+  };
+}
+
+async function fetchResendAttachments(
+  apiKey: string,
+  emailId: string,
+): Promise<InboundAttachment[]> {
   const response = await fetch(
     `https://api.resend.com/emails/receiving/${encodeURIComponent(emailId)}/attachments`,
     {
@@ -77,11 +124,7 @@ async function parseResend(body: Record<string, unknown>): Promise<InboundEmail 
     });
   }
 
-  return {
-    from: emailAddress(String(data.from ?? "")),
-    subject: String(data.subject ?? ""),
-    attachments,
-  };
+  return attachments;
 }
 
 export async function parseInbound(request: Request): Promise<InboundEmail | null> {
@@ -101,6 +144,8 @@ export async function parseInbound(request: Request): Promise<InboundEmail | nul
       return {
         from: emailAddress(String(body.From ?? "")),
         subject: String(body.Subject ?? ""),
+        html: body.HtmlBody ? String(body.HtmlBody) : undefined,
+        text: body.TextBody ? String(body.TextBody) : undefined,
         attachments: (body.Attachments as unknown[]).map((raw) => {
           const item = asRecord(raw);
           return {
@@ -118,6 +163,8 @@ export async function parseInbound(request: Request): Promise<InboundEmail | nul
         from: emailAddress(String(body.from ?? "")),
         subject: String(body.subject ?? ""),
         clientId: body.clientId ? String(body.clientId) : undefined,
+        html: body.html ? String(body.html) : undefined,
+        text: body.text ? String(body.text) : body.body ? String(body.body) : undefined,
         attachments: (body.attachments as unknown[]).map((raw) => {
           const item = asRecord(raw);
           return {
@@ -147,10 +194,16 @@ export async function parseInbound(request: Request): Promise<InboundEmail | nul
       }
     }
 
+    const html = form.get("html") ?? form.get("body-html");
+    const text =
+      form.get("text") ?? form.get("body-plain") ?? form.get("body") ?? form.get("stripped-text");
+
     return {
       from: emailAddress(String(form.get("from") ?? form.get("sender") ?? "")),
       subject: String(form.get("subject") ?? ""),
       clientId: form.get("clientId") ? String(form.get("clientId")) : undefined,
+      html: typeof html === "string" ? html : undefined,
+      text: typeof text === "string" ? text : undefined,
       attachments,
     };
   }
