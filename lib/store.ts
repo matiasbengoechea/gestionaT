@@ -147,18 +147,24 @@ export async function saveInvoice(record: StoredInvoice): Promise<void> {
 
 export async function listInvoices(
   limit = 100,
+  since?: string,
 ): Promise<{ invoices: StoredInvoice[]; error?: string }> {
   const config = supabaseConfig();
 
   if (config) {
     try {
-      const response = await fetch(
-        `${config.url}/rest/v1/invoices?select=*&order=recibido_en.desc&limit=${limit}`,
-        {
-          headers: { apikey: config.key, Authorization: `Bearer ${config.key}` },
-          cache: "no-store",
-        },
-      );
+      const params = new URLSearchParams({
+        select: "*",
+        order: "recibido_en.desc",
+        limit: String(limit),
+      });
+      // `gte` (y no `gt`) para no perder facturas con el mismo timestamp que la última vista.
+      if (since) params.set("recibido_en", `gte.${since}`);
+
+      const response = await fetch(`${config.url}/rest/v1/invoices?${params.toString()}`, {
+        headers: { apikey: config.key, Authorization: `Bearer ${config.key}` },
+        cache: "no-store",
+      });
       if (!response.ok) {
         const detail = await response.text().catch(() => "");
         return {
@@ -200,5 +206,6 @@ export async function listInvoices(
     }
   }
 
-  return { invoices: memory.slice(0, limit) };
+  const rows = since ? memory.filter((record) => record.recibidoEn >= since) : memory;
+  return { invoices: rows.slice(0, limit) };
 }

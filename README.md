@@ -59,6 +59,7 @@ El diseño completo está en [`ARCHITECTURE.md`](./ARCHITECTURE.md).
 | `lib/validate.ts` | Reglas de control (isomórficas: servidor y cliente). |
 | `lib/clients.ts` | Perfiles de cliente con plan de cuentas. |
 | `lib/use-invoice-queue.ts` | Cola secuencial, estado por factura y persistencia de aprobadas. |
+| `app/api/invoices/route.ts` | Listado de facturas guardadas, con filtro incremental `since`. |
 | `lib/ui-mapping.ts` | Traducción del modelo del motor al modelo de la pantalla. |
 | `lib/export-csv.ts` | Exportación cabecera/detalle para sistemas contables. |
 | `app/api/extract/route.ts` | Endpoint de extracción. |
@@ -151,13 +152,36 @@ create table invoices (
 
 **Prueba manual**
 
+Con el servidor corriendo, simulá un mail con un PDF de muestra y mirá cómo aparece en vivo:
+
+```bash
+pnpm inbound samples/factura-a-aceros.pdf
+pnpm inbound samples/factura-a-aceros.pdf --from proveedor@ejemplo.com
+```
+
+También podés usar `curl` directamente:
+
 ```bash
 curl -X POST http://localhost:3000/api/inbound/email \
   -H 'Content-Type: application/json' \
   -d "{\"from\":\"proveedor@ejemplo.com\",\"subject\":\"Factura\",\"attachments\":[{\"filename\":\"f.pdf\",\"contentType\":\"application/pdf\",\"contentBase64\":\"<base64>\"}]}"
 ```
 
-`GET /api/invoices` devuelve las facturas guardadas y el backend activo.
+`GET /api/invoices` devuelve las facturas guardadas y el backend activo. Acepta
+`?since=<ISO>` para traer solo las recibidas desde ese momento.
+
+### Actualización en vivo
+
+La pantalla consulta `/api/invoices` cada 4 segundos (y al volver a la pestaña) usando
+`since` con la fecha de la última factura vista. Cuando entra una factura nueva por mail:
+
+- aparece arriba de la tabla, resaltada y con la etiqueta **Nueva** durante unos segundos;
+- se muestra un aviso con el proveedor y el remitente (al hacer clic se abre el detalle);
+- el indicador **En vivo** muestra la hora de la última consulta y se pausa si la pestaña
+  queda oculta.
+
+El polling funciona con Supabase y con el backend en memoria (en memoria solo dentro de la
+misma instancia del servidor).
 
 ## Conversión a pesos
 

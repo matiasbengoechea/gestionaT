@@ -1,13 +1,13 @@
 'use client'
 
-import { ChangeEvent, useEffect, useMemo, useState } from 'react'
+import { ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { DEFAULT_CLIENT_ID, getClient } from '@/lib/clients'
 import { isValidCuit } from '@/lib/cuit'
 import { formatMoney } from '@/lib/format'
 import { sumTaxes } from '@/lib/validate'
 import type { InvoiceData, ValidationIssue } from '@/lib/types'
 import {
-  AlertTriangle, ArrowLeft, ArrowRight, Check, CircleHelp, FileText, Folders,
+  AlertTriangle, ArrowLeft, ArrowRight, Check, CircleHelp, FileText, Folders, Mail,
   Maximize2, Move, Pencil, Plus, Redo2, Tag, Trash2, Undo2, Upload, ZoomOut,
 } from 'lucide-react'
 
@@ -16,6 +16,23 @@ type Invoice = {
   number: string; supplier: string; total: string; status: 'green' | 'amber' | 'red'
   nif: string; concept: string; fileUrl?: string; fileName?: string; fileType?: string; provisionalNif?: boolean
   data?: InvoiceData; issues?: ValidationIssue[]; processing?: boolean; error?: string; reviewed?: boolean
+  /** Metadata del mail que la trajo, para el aviso de llegada. */
+  recibidoEn?: string; remitente?: string; asunto?: string
+  /** Recién llegada: se resalta unos segundos y se limpia solo. */
+  isNew?: boolean
+}
+
+/** Registro tal como lo devuelve `GET /api/invoices`. */
+type ApiInvoice = {
+  id: string
+  recibidoEn?: string
+  remitente?: string
+  asunto?: string
+  fileName: string
+  fileUrl?: string
+  clientId: string
+  invoice: InvoiceData
+  issues?: ValidationIssue[]
 }
 
 /** Factura vacía para mostrar el detalle cuando todavía no hay ninguna cargada. */
@@ -92,6 +109,25 @@ function mapInvoice(
   }
 }
 
+function mapRecord(record: ApiInvoice): Invoice {
+  const client = getClient(record.clientId)
+  return {
+    id: record.id,
+    ...mapInvoice(record.invoice, record.issues ?? [], client?.nombre ?? '', client?.rubro ?? ''),
+    fileName: record.fileName,
+    fileUrl: record.fileUrl,
+    fileType: record.fileName.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/png',
+    reviewed: false,
+    recibidoEn: record.recibidoEn,
+    remitente: record.remitente,
+    asunto: record.asunto,
+  } as Invoice
+}
+
+const POLL_MS = 4000
+const HIGHLIGHT_MS = 8000
+const TOAST_MS = 7000
+
 
 export default function Home() {
   const [invoices, setInvoices] = useState<Invoice[]>([])
@@ -102,6 +138,9 @@ export default function Home() {
   const [sending, setSending] = useState(false)
   const [sendError, setSendError] = useState<string | null>(null)
   const [sentInfo, setSentInfo] = useState<{ facturas: number; renglones: number; totalArs: number } | null>(null)
+  const [live, setLive] = useState<'connecting' | 'live' | 'paused' | 'error'>('connecting')
+  const [lastSync, setLastSync] = useState<Date | null>(null)
+  const [arrival, setArrival] = useState<{ id: string; supplier: string; remitente?: string } | null>(null)
   // Cliente por defecto: el motor lo usa para el plan de cuentas y el receptor.
   const clientId = DEFAULT_CLIENT_ID
   const selected = useMemo(
@@ -109,51 +148,104 @@ export default function Home() {
     [invoices, selectedId],
   )
 
-  // Facturas que llegaron por mail (o por API) y quedaron guardadas en el servidor.
+  // Ids ya conocidos: evita duplicar cuando el polling vuelve a traer la última factura.
+  const knownIdsRef = useRef<Set<string>>(new Set())
+  // Timestamp de la factura más nueva vista; el polling pide solo lo posterior.
+  const lastSeenRef = useRef<string | null>(null)
+  const highlightTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const mergeRecords = useCallback((records: ApiInvoice[], highlight: boolean) => {
+    const fresh = records.map(mapRecord).filter((record) => !knownIdsRef.current.has(record.id))
+    if (fresh.length === 0) return []
+    for (const record of fresh) knownIdsRef.current.add(record.id)
+    const marked = highlight ? fresh.map((record) => ({ ...record, isNew: true })) : fresh
+    // Las más nuevas van arriba, como llegan en la respuesta del servidor.
+    setInvoices((current) => [...marked, ...current])
+    return marked
+  }, [])
+
+  // Facturas que llegaron por mail (o por API): carga inicial + refresco en vivo.
   useEffect(() => {
     let cancelled = false
-    fetch('/api/invoices')
-      .then((response) => response.json())
-      .then((payload) => {
-        if (cancelled || !payload?.ok || !Array.isArray(payload.invoices)) return
-        const mapped = (
-          payload.invoices as Array<{
-            id: string
-            fileName: string
-            fileUrl?: string
-            clientId: string
-            invoice: InvoiceData
-            issues?: ValidationIssue[]
-          }>
-        ).map((record) => {
-          const client = getClient(record.clientId)
-          return {
-            id: record.id,
-            ...mapInvoice(
-              record.invoice,
-              record.issues ?? [],
-              client?.nombre ?? '',
-              client?.rubro ?? '',
-            ),
-            fileName: record.fileName,
-            fileUrl: record.fileUrl,
-            fileType: record.fileName.toLowerCase().endsWith('.pdf')
-              ? 'application/pdf'
-              : 'image/png',
-            reviewed: false,
-          } as Invoice
-        })
-        setInvoices((current) => {
-          const byId = new Map(current.map((invoice) => [invoice.id, invoice]))
-          for (const invoice of mapped) if (!byId.has(invoice.id)) byId.set(invoice.id, invoice)
-          return Array.from(byId.values())
-        })
-      })
-      .catch(() => {})
+    let timer: ReturnType<typeof setInterval> | null = null
+
+    const apply = (records: ApiInvoice[], highlight: boolean) => {
+      const fresh = mergeRecords(records, highlight)
+
+      const newest = records.reduce<string | null>((max, record) => {
+        const value = record.recibidoEn
+        return value && (!max || value > max) ? value : max
+      }, lastSeenRef.current)
+      lastSeenRef.current = newest
+
+      setLastSync(new Date())
+      setLive('live')
+
+      if (!highlight || fresh.length === 0) return
+
+      const first = fresh[0]
+      setArrival({ id: first.id, supplier: first.supplier, remitente: first.remitente })
+      if (toastTimer.current) clearTimeout(toastTimer.current)
+      toastTimer.current = setTimeout(() => setArrival(null), TOAST_MS)
+
+      for (const record of fresh) {
+        const previous = highlightTimers.current.get(record.id)
+        if (previous) clearTimeout(previous)
+        highlightTimers.current.set(
+          record.id,
+          setTimeout(() => {
+            setInvoices((current) =>
+              current.map((invoice) => (invoice.id === record.id ? { ...invoice, isNew: false } : invoice)),
+            )
+            highlightTimers.current.delete(record.id)
+          }, HIGHLIGHT_MS),
+        )
+      }
+    }
+
+    const poll = async (highlight: boolean) => {
+      try {
+        const since = lastSeenRef.current
+        const url = since ? `/api/invoices?since=${encodeURIComponent(since)}` : '/api/invoices'
+        const response = await fetch(url, { cache: 'no-store' })
+        const payload = await response.json()
+        if (cancelled) return
+        if (!response.ok || !payload?.ok || !Array.isArray(payload.invoices)) {
+          setLive('error')
+          return
+        }
+        apply(payload.invoices as ApiInvoice[], highlight)
+      } catch {
+        if (!cancelled) setLive('error')
+      }
+    }
+
+    void poll(false).then(() => {
+      if (cancelled) return
+      timer = setInterval(() => {
+        if (document.visibilityState === 'hidden') {
+          setLive('paused')
+          return
+        }
+        void poll(true)
+      }, POLL_MS)
+    })
+
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') void poll(true)
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+
     return () => {
       cancelled = true
+      if (timer) clearInterval(timer)
+      if (toastTimer.current) clearTimeout(toastTimer.current)
+      for (const timeout of highlightTimers.current.values()) clearTimeout(timeout)
+      highlightTimers.current.clear()
+      document.removeEventListener('visibilitychange', onVisibility)
     }
-  }, [])
+  }, [mergeRecords])
 
   const toggleChecked = (id: string) => setChecked((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id])
   const updateSelected = (key: keyof Invoice, value: string) => setInvoices((current) => current.map((invoice) => invoice.id === selected.id ? { ...invoice, [key]: value } : invoice))
@@ -299,8 +391,8 @@ export default function Home() {
 
       <div className="flex min-h-0 flex-1">
         <section className="flex min-w-0 flex-[1.15] flex-col border-r bg-card">
-          <div className="flex h-11 shrink-0 items-center justify-between border-b bg-sky-50 px-4 text-xs text-slate-700"><span className="font-semibold">{invoices.length} Facturas: <span className="font-normal">{invoices.filter((invoice) => invoice.fileUrl).length} Importadas, {invoices.length} Interpretadas</span></span><div className="flex items-center gap-3 text-[11px]"><span className="flex items-center gap-1"><i className="status-dot bg-emerald-500" /> Verdes</span><span className="flex items-center gap-1"><i className="status-dot bg-amber-400" /> Ámbar</span><span className="flex items-center gap-1"><i className="status-dot bg-rose-500" /> Rojas</span><span>{checked.length} Seleccionadas</span></div></div>
-          <div className="min-h-0 flex-[0.9] overflow-auto border-b"><table className="w-full min-w-[920px] border-collapse text-[11px]"><thead className="sticky top-0 z-10 bg-muted text-left font-semibold text-muted-foreground"><tr>{['Estado', 'Empresa', 'Actividad', 'Ejercicio', 'Fecha Factura', 'Fecha Asiento', 'Nº Factura', 'Cliente / Proveedor', 'Total'].map((heading) => <th key={heading} className="whitespace-nowrap border-b px-2.5 py-2">{heading}</th>)}</tr></thead><tbody>{invoices.length === 0 ? <tr><td colSpan={9} className="px-4 py-10 text-center text-xs text-muted-foreground">Subí facturas para empezar. Se procesan de a una con IA.</td></tr> : null}{invoices.map((invoice) => <tr key={invoice.id} onClick={() => { setSelectedId(invoice.id); setSaved(false) }} className={`cursor-pointer border-b transition-colors hover:bg-blue-50 ${selectedId === invoice.id ? 'bg-blue-100' : ''}`}><td className="px-2.5 py-2"><div className="flex items-center gap-2"><input aria-label={`Seleccionar factura ${invoice.number}`} type="checkbox" checked={checked.includes(invoice.id)} onChange={() => toggleChecked(invoice.id)} onClick={(event) => event.stopPropagation()} className="accent-primary" />{invoice.reviewed ? <Check className="size-3.5 text-emerald-600" aria-label="Revisada" /> : <i className={`status-dot ${statusColors[invoice.status]}`} />}</div></td><td className="whitespace-nowrap px-2.5 py-2 font-medium">{invoice.company}</td><td className="whitespace-nowrap px-2.5 py-2 text-muted-foreground">{invoice.activity}</td><td className="px-2.5 py-2">{invoice.year}</td><td className="whitespace-nowrap px-2.5 py-2">{invoice.date}</td><td className="whitespace-nowrap px-2.5 py-2">{invoice.entry}</td><td className="px-2.5 py-2">{invoice.number}</td><td className="whitespace-nowrap px-2.5 py-2">{invoice.supplier}</td><td className="whitespace-nowrap px-2.5 py-2 text-right font-medium">{invoice.total}</td></tr>)}</tbody></table></div>
+          <div className="flex h-11 shrink-0 items-center justify-between border-b bg-sky-50 px-4 text-xs text-slate-700"><span className="font-semibold">{invoices.length} Facturas: <span className="font-normal">{invoices.filter((invoice) => invoice.fileUrl).length} Importadas, {invoices.length} Interpretadas</span></span><div className="flex items-center gap-3 text-[11px]"><span className="flex items-center gap-1.5" title={live === 'live' ? 'Actualizando cada 4 segundos' : live === 'paused' ? 'En pausa mientras la pestaña está oculta' : live === 'error' ? 'No se pudo consultar el servidor' : 'Conectando con el servidor'}><span className="relative flex size-2">{live === 'live' ? <span className="absolute inline-flex size-2 animate-ping rounded-full bg-emerald-400 opacity-75" /> : null}<span className={`relative inline-flex size-2 rounded-full ${live === 'live' ? 'bg-emerald-500' : live === 'error' ? 'bg-rose-500' : 'bg-slate-400'}`} /></span><span className="font-semibold">{live === 'live' ? 'En vivo' : live === 'paused' ? 'En pausa' : live === 'error' ? 'Sin conexión' : 'Conectando…'}</span>{lastSync ? <span className="text-slate-400">· {lastSync.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span> : null}</span><span className="flex items-center gap-1"><i className="status-dot bg-emerald-500" /> Verdes</span><span className="flex items-center gap-1"><i className="status-dot bg-amber-400" /> Ámbar</span><span className="flex items-center gap-1"><i className="status-dot bg-rose-500" /> Rojas</span><span>{checked.length} Seleccionadas</span></div></div>
+          <div className="min-h-0 flex-[0.9] overflow-auto border-b"><table className="w-full min-w-[920px] border-collapse text-[11px]"><thead className="sticky top-0 z-10 bg-muted text-left font-semibold text-muted-foreground"><tr>{['Estado', 'Empresa', 'Actividad', 'Ejercicio', 'Fecha Factura', 'Fecha Asiento', 'Nº Factura', 'Cliente / Proveedor', 'Total'].map((heading) => <th key={heading} className="whitespace-nowrap border-b px-2.5 py-2">{heading}</th>)}</tr></thead><tbody>{invoices.length === 0 ? <tr><td colSpan={9} className="px-4 py-10 text-center text-xs text-muted-foreground">Subí facturas para empezar. Se procesan de a una con IA.</td></tr> : null}{invoices.map((invoice) => <tr key={invoice.id} onClick={() => { setSelectedId(invoice.id); setSaved(false) }} className={`cursor-pointer border-b transition-colors hover:bg-blue-50 ${invoice.isNew ? 'bg-emerald-50' : ''} ${selectedId === invoice.id ? 'bg-blue-100' : ''}`}><td className="px-2.5 py-2"><div className="flex items-center gap-2"><input aria-label={`Seleccionar factura ${invoice.number}`} type="checkbox" checked={checked.includes(invoice.id)} onChange={() => toggleChecked(invoice.id)} onClick={(event) => event.stopPropagation()} className="accent-primary" />{invoice.reviewed ? <Check className="size-3.5 text-emerald-600" aria-label="Revisada" /> : <i className={`status-dot ${statusColors[invoice.status]}`} />}</div></td><td className="whitespace-nowrap px-2.5 py-2 font-medium">{invoice.company}</td><td className="whitespace-nowrap px-2.5 py-2 text-muted-foreground">{invoice.activity}</td><td className="px-2.5 py-2">{invoice.year}</td><td className="whitespace-nowrap px-2.5 py-2">{invoice.date}</td><td className="whitespace-nowrap px-2.5 py-2">{invoice.entry}</td><td className="px-2.5 py-2">{invoice.number}</td><td className="whitespace-nowrap px-2.5 py-2"><span className="flex items-center gap-1.5">{invoice.supplier}{invoice.isNew ? <span className="rounded bg-emerald-600 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white">Nueva</span> : null}</span></td><td className="whitespace-nowrap px-2.5 py-2 text-right font-medium">{invoice.total}</td></tr>)}</tbody></table></div>
           <div className="flex h-12 shrink-0 items-center gap-5 border-b px-4 text-xs font-medium text-primary"><button onClick={() => setChecked(invoices.map((invoice) => invoice.id))}>Marcar todas</button><button onClick={() => setChecked([])}>Desmarcar todas</button><button onClick={reviewCurrent}>Revisar</button><button onClick={saveCurrent}>Guardar</button></div>
 
           <div className="min-h-0 flex-[1.1] overflow-auto px-5 py-3"><div className="mb-3 flex items-center justify-between"><h2 className="text-sm font-bold tracking-tight">Detalle de factura</h2><div className="flex items-center gap-2 text-xs text-muted-foreground"><span>Estado:</span><i className="status-dot bg-emerald-500" /><i className="status-dot bg-amber-400" /><i className="status-dot bg-rose-500" /></div></div>
@@ -314,6 +406,30 @@ export default function Home() {
 
         <aside className="flex min-w-[380px] flex-[0.85] flex-col bg-slate-100"><div className="flex h-12 shrink-0 items-center gap-1 border-b bg-card px-3"><button className="viewer-button"><Plus /></button><button className="viewer-button"><ZoomOut /></button><button className="viewer-button"><ArrowLeft /></button><button className="viewer-button"><ArrowRight /></button><button className="viewer-button"><Move /></button><button className="viewer-button"><Undo2 /></button><button className="viewer-button"><Redo2 /></button><div className="ml-auto flex items-center gap-2 text-xs text-muted-foreground"><span>1 / 1</span><button className="viewer-button"><Maximize2 /></button></div></div><div className="min-h-0 flex-1 overflow-auto p-8">{selected.fileUrl ? (selected.fileType === 'application/pdf' ? <iframe title={`Documento ${selected.fileName}`} src={selected.fileUrl} className="h-full min-h-[720px] w-full rounded bg-white shadow-sm" /> : <div className="flex min-h-[720px] items-start justify-center rounded bg-white p-5 shadow-sm"><img src={selected.fileUrl} alt={`Factura cargada ${selected.fileName}`} className="max-h-[850px] max-w-full object-contain" /></div>) : <div className="mx-auto flex min-h-[720px] max-w-[620px] flex-col items-center justify-center gap-3 rounded bg-white p-12 text-center shadow-sm"><FileText className="size-10 text-slate-300" /><p className="text-sm font-medium text-slate-600">Sin documento para mostrar</p><p className="text-xs text-slate-400">Subí una factura para verla acá junto a los datos extraídos.</p></div>}</div></aside>
       </div>
+
+      {arrival ? (
+        <button
+          type="button"
+          onClick={() => {
+            setSelectedId(arrival.id)
+            setSaved(false)
+            setArrival(null)
+          }}
+          className="fixed right-5 top-16 z-50 flex w-80 items-start gap-3 rounded-lg border border-emerald-200 bg-white p-3 text-left shadow-lg animate-in fade-in slide-in-from-right-4"
+        >
+          <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
+            <Mail className="size-4" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-xs font-semibold text-emerald-800">Nueva factura recibida</span>
+            <span className="block truncate text-xs text-slate-600">{arrival.supplier}</span>
+            {arrival.remitente ? (
+              <span className="block truncate text-[11px] text-slate-400">de {arrival.remitente}</span>
+            ) : null}
+          </span>
+          <span className="text-sm leading-none text-slate-400">×</span>
+        </button>
+      ) : null}
     </main>
   )
 }
