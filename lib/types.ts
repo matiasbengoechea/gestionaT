@@ -74,21 +74,57 @@ export interface InvoiceData {
   confianza: number;
 }
 
-/** Campos de la ficha contable que no forman parte del comprobante original. */
-export interface RowExtras {
-  /** Cuenta del proveedor / acreedor. */
-  cuenta: string;
-  cuentaTesoreria: string;
+/**
+ * Línea editable de la grilla de desglose impositivo y contable.
+ * Los importes viajan como texto para poder editarse sin perder lo tipeado.
+ */
+export interface GridLine {
+  /** Código de operación (alícuota del Libro IVA Digital, o EXT para el exterior). */
+  op: string;
+  /** Neto gravado. */
+  base: string;
+  /** IVA | Exento | No gravado | Exterior. */
+  tipo: string;
+  /** Alícuota de IVA en porcentaje. */
+  iva: string;
+  /** Percepciones de IIBB / IVA. */
+  recargo: string;
+  tipoRet: string;
+  retencion: string;
+  /** Régimen / impreso: Libro IVA Digital / F.2002, Exterior. */
+  regimen: string;
+  /** Cuenta de gasto/ingreso sugerida. */
+  contrapartida: string;
+}
+
+/** Campos de la ficha "Detalle de factura" tal como los edita el usuario. */
+export interface RowForm {
+  tipoCompAfip: string;
+  nroFactura: string;
+  /** DD/MM/AAAA */
+  fechaFactura: string;
   /** DD/MM/AAAA */
   fechaAsiento: string;
   /** DD/MM/AAAA */
   fechaOperacion: string;
+  proveedor: string;
+  /** Cuenta del proveedor / acreedor. */
+  cuenta: string;
+  cuentaTesoreria: string;
+  /** Rectificativa / nota de crédito: invierte el signo del asiento. */
+  rectificativa: boolean;
+  moneda: string;
+  tipoCambio: string;
+  total: string;
+  cuit: string;
+  concepto: string;
   textoIdentif: string;
   tfn1: string;
   tfn2: string;
-  rectificativa: boolean;
+  ajustes: string;
   observaciones: string;
   descripcion: string;
+  grid: GridLine[];
 }
 
 export type IssueSeverity = "error" | "warning" | "info";
