@@ -40,7 +40,19 @@ export async function POST(request: Request) {
     }
   }
 
-  const parsed = await parseInbound(request);
+  let parsed: Awaited<ReturnType<typeof parseInbound>>;
+  try {
+    parsed = await parseInbound(request);
+  } catch (error) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: error instanceof Error ? error.message : "No se pudo interpretar el mail recibido.",
+      },
+      { status: 400 },
+    );
+  }
+
   if (!parsed) {
     return NextResponse.json(
       { ok: false, error: "No se pudo interpretar el mail recibido." },
