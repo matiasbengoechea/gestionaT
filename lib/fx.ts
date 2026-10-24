@@ -6,9 +6,11 @@ import type { InvoiceData } from "./types";
  * El modelo nunca inventa una cotización: la trae este módulo, con fuente y
  * fecha, y queda registrada en la factura.
  *
- * Fuentes:
- * - ArgentinaDatos: histórico del dólar por casa (oficial, blue, MEP, ...).
- * - Frankfurter (BCE): tipos de referencia para el cruce de otras monedas.
+ * Fuentes, en orden:
+ * 1. ArgentinaDatos: histórico del dólar por casa (oficial, blue, MEP, ...).
+ * 2. BCRA (estadísticas cambiarias): cotización oficial de todas las monedas
+ *    para una fecha. Se usa como respaldo si la primera falla.
+ * 3. Frankfurter (BCE): cruce para monedas que no publica el BCRA.
  */
 
 export interface FxQuote {
@@ -33,7 +35,7 @@ export interface FxApplyResult {
   error?: string;
 }
 
-const TIMEOUT_MS = 8000;
+const TIMEOUT_MS = 10000;
 const MAX_LOOKBACK_DAYS = 7;
 const cache = new Map<string, FxResult>();
 
@@ -56,27 +58,37 @@ interface FetchResult {
   error?: string;
 }
 
-async function fetchJson(url: string): Promise<FetchResult> {
-  try {
-    const response = await fetch(url, {
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-      headers: { accept: "application/json" },
-      cache: "no-store",
-    });
-    if (!response.ok) {
-      return { data: null, error: `HTTP ${response.status}` };
+/** GET con un reintento para errores transitorios (429, 5xx, timeout). */
+async function fetchJson(url: string, attempts = 2): Promise<FetchResult> {
+  let lastError = "error de red";
+
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      const response = await fetch(url, {
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+        headers: { accept: "application/json" },
+        cache: "no-store",
+      });
+      if (response.ok) {
+        const data = await response.json();
+        return {
+          data: data && typeof data === "object" ? (data as Record<string, unknown>) : null,
+        };
+      }
+      lastError = `HTTP ${response.status}`;
+      // Un 4xx (salvo 429) no se arregla reintentando.
+      if (response.status !== 429 && response.status < 500) break;
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : "error de red";
     }
-    const data = await response.json();
-    return { data: data && typeof data === "object" ? (data as Record<string, unknown>) : null };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "error de red";
-    return { data: null, error: message };
   }
+
+  return { data: null, error: lastError };
 }
 
 type RateResult = { ok: true; valor: number; fecha: string } | { ok: false; error: string };
 
-/** Dólar (o la casa configurada) en pesos, para una fecha. */
+/** Dólar (o la casa configurada) en pesos, según ArgentinaDatos. */
 async function usdArs(fecha: string): Promise<RateResult> {
   const { tipo, lado } = fxConfig();
   let lastError = "sin datos";
@@ -103,6 +115,36 @@ async function usdArs(fecha: string): Promise<RateResult> {
   }
 
   return { ok: false, error: `ArgentinaDatos (${tipo}): ${lastError}` };
+}
+
+/** Cotización oficial del BCRA para una moneda y fecha. */
+async function bcraRate(moneda: string, fecha: string): Promise<RateResult> {
+  let lastError = "sin datos";
+
+  for (let offset = 0; offset < MAX_LOOKBACK_DAYS; offset += 1) {
+    const day = shiftDate(fecha, -offset);
+    const result = await fetchJson(
+      `https://api.bcra.gob.ar/estadisticascambiarias/v1.0/Cotizaciones?fecha=${day}`,
+    );
+    if (result.error) {
+      lastError = result.error;
+      continue;
+    }
+    const results = result.data?.results as Record<string, unknown> | undefined;
+    const detalle = results?.detalle as Array<Record<string, unknown>> | undefined;
+    const entry = detalle?.find((item) => item.codigoMoneda === moneda);
+    const value = entry?.tipoCotizacion;
+    if (typeof value === "number" && value > 0) {
+      return {
+        ok: true,
+        valor: value,
+        fecha: typeof results?.fecha === "string" ? results.fecha : day,
+      };
+    }
+    lastError = `sin cotización ${moneda}`;
+  }
+
+  return { ok: false, error: `BCRA: ${lastError}` };
 }
 
 /** Cuántos dólares vale una unidad de `moneda`, según el BCE. */
@@ -148,48 +190,65 @@ export async function resolveFx(moneda: string, fecha: string): Promise<FxResult
 
   const { tipo, lado } = fxConfig();
   const usd = await usdArs(fecha);
-  if (!usd.ok) {
-    const result: FxResult = { quote: null, reason: usd.error };
-    cache.set(key, result);
-    return result;
+
+  // Camino principal: ArgentinaDatos (permite elegir casa y lado).
+  if (usd.ok) {
+    if (currency === "USD") {
+      const result: FxResult = {
+        quote: {
+          moneda: "USD",
+          fecha: usd.fecha,
+          valor: usd.valor,
+          fuente: `ArgentinaDatos (${tipo}, ${lado})`,
+          tipo,
+        },
+      };
+      cache.set(key, result);
+      return result;
+    }
+
+    const cross = await crossToUsd(currency, fecha);
+    if (cross.ok) {
+      const result: FxResult = {
+        quote: {
+          moneda: currency,
+          fecha: usd.fecha,
+          valor: Math.round(cross.valor * usd.valor * 10000) / 10000,
+          fuente: `ArgentinaDatos (${tipo}, ${lado}) × Frankfurter (${currency}/USD)`,
+          tipo,
+          cruz: {
+            par: `${currency}/USD`,
+            valor: cross.valor,
+            fecha: cross.fecha,
+            fuente: "Frankfurter (BCE)",
+          },
+        },
+      };
+      cache.set(key, result);
+      return result;
+    }
   }
 
-  if (currency === "USD") {
+  // Respaldo: cotización oficial del BCRA, directa en pesos.
+  const bcra = await bcraRate(currency, fecha);
+  if (bcra.ok) {
     const result: FxResult = {
       quote: {
-        moneda: "USD",
-        fecha: usd.fecha,
-        valor: usd.valor,
-        fuente: `ArgentinaDatos (${tipo}, ${lado})`,
-        tipo,
+        moneda: currency,
+        fecha: bcra.fecha,
+        valor: bcra.valor,
+        fuente: "BCRA (estadísticas cambiarias)",
+        tipo: "oficial",
       },
     };
     cache.set(key, result);
     return result;
   }
 
-  const cross = await crossToUsd(currency, fecha);
-  if (!cross.ok) {
-    const result: FxResult = { quote: null, reason: cross.error };
-    cache.set(key, result);
-    return result;
-  }
-
-  const result: FxResult = {
-    quote: {
-      moneda: currency,
-      fecha: usd.fecha,
-      valor: Math.round(cross.valor * usd.valor * 10000) / 10000,
-      fuente: `ArgentinaDatos (${tipo}, ${lado}) × Frankfurter (${currency}/USD)`,
-      tipo,
-      cruz: {
-        par: `${currency}/USD`,
-        valor: cross.valor,
-        fecha: cross.fecha,
-        fuente: "Frankfurter (BCE)",
-      },
-    },
-  };
+  const reason = usd.ok
+    ? `BCRA: ${bcra.error}`
+    : `${usd.error}; ${bcra.error}`;
+  const result: FxResult = { quote: null, reason };
   cache.set(key, result);
   return result;
 }
