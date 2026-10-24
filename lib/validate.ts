@@ -121,7 +121,16 @@ export function validateInvoice(
     });
   }
 
-  if (!isValidCuit(data.receptor.cuit)) {
+  const receptorDigits = normalizeCuit(data.receptor.cuit);
+  if (receptorDigits.length === 11) {
+    if (!isValidCuit(data.receptor.cuit)) {
+      issues.push({
+        code: "cuit_receptor_invalido",
+        message: `El CUIT del receptor (${data.receptor.cuit}) no pasa la validación de dígito verificador.`,
+        severity: "warning",
+      });
+    }
+  } else if (!esExterior) {
     issues.push({
       code: "cuit_receptor_invalido",
       message: `El CUIT del receptor (${data.receptor.cuit || "vacío"}) no pasa la validación de dígito verificador.`,
@@ -225,6 +234,8 @@ export function validateInvoice(
   // --- Señales del modelo ---
   for (const field of data.camposDudosos) {
     if (!hasValue(data, field)) continue;
+    // La condición frente al IVA no aplica a proveedores del exterior.
+    if (esExterior && field === "emisor.condicionIva") continue;
     issues.push({
       code: "campo_dudoso",
       message: `Lectura poco confiable en: ${field}.`,

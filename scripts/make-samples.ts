@@ -237,6 +237,70 @@ async function facturaCSinCae() {
   return pdf.save();
 }
 
+async function facturaExteriorEastRepair() {
+  const { pdf, ctx } = await newPage();
+
+  text(ctx, "INVOICE", 40, 780, 30, true);
+  text(ctx, "East Repair Inc.", 40, 730, 11, true);
+  text(ctx, "1912 Harvest Lane", 40, 716, 9);
+  text(ctx, "New York, NY 12210", 40, 703, 9);
+
+  text(ctx, "BILL TO", 40, 660, 9, true);
+  text(ctx, "John Smith", 40, 646, 9);
+  text(ctx, "2 Court Square", 40, 633, 9);
+  text(ctx, "New York, NY 12210", 40, 620, 9);
+
+  text(ctx, "SHIP TO", 230, 660, 9, true);
+  text(ctx, "John Smith", 230, 646, 9);
+  text(ctx, "3787 Pineview Drive", 230, 633, 9);
+  text(ctx, "Cambridge, MA 12210", 230, 620, 9);
+
+  text(ctx, "INVOICE #", 400, 660, 9, true);
+  right(ctx, "US-001", 548, 660, 9);
+  text(ctx, "INVOICE DATE", 400, 646, 9, true);
+  right(ctx, "11/02/2019", 548, 646, 9);
+  text(ctx, "P.O.#", 400, 633, 9, true);
+  right(ctx, "2312/2019", 548, 633, 9);
+  text(ctx, "DUE DATE", 400, 620, 9, true);
+  right(ctx, "26/02/2019", 548, 620, 9);
+
+  tableHeader(ctx, 590, [
+    { label: "QTY", x: 46 },
+    { label: "DESCRIPTION", x: 120 },
+    { label: "UNIT PRICE", x: 400, right: 470 },
+    { label: "AMOUNT", x: 500, right: 548 },
+  ]);
+
+  const rows = [
+    ["1", "Front and rear brake cables", "100.00", "100.00"],
+    ["2", "New set of pedal arms", "15.00", "30.00"],
+    ["3", "Labor 3hrs", "5.00", "15.00"],
+  ];
+  let y = 565;
+  for (const [qty, desc, unit, amount] of rows) {
+    text(ctx, qty, 46, y, 9);
+    text(ctx, desc, 120, y, 9);
+    right(ctx, unit, 470, y, 9);
+    right(ctx, amount, 548, y, 9);
+    y -= 18;
+  }
+
+  ctx.page.drawLine({ start: { x: 40, y: y + 8 }, end: { x: 555, y: y + 8 }, thickness: 0.8, color: GRAY });
+
+  right(ctx, "Subtotal", 470, y - 10, 9);
+  right(ctx, "145.00", 548, y - 10, 9);
+  right(ctx, "Sales Tax 6.25%", 470, y - 26, 9);
+  right(ctx, "9.06", 548, y - 26, 9);
+  right(ctx, "TOTAL", 470, y - 46, 11, true);
+  right(ctx, "$154.06", 548, y - 46, 11, true);
+
+  text(ctx, "TERMS & CONDITIONS", 40, 150, 9, true);
+  text(ctx, "Payment is due within 15 days", 40, 136, 9);
+  text(ctx, "Please make checks payable to: East Repair Inc.", 40, 122, 9);
+
+  return pdf.save();
+}
+
 async function main() {
   mkdirSync(OUT_DIR, { recursive: true });
 
@@ -245,6 +309,7 @@ async function main() {
     ["factura-exterior-systemsx.pdf", await facturaExteriorSystemsx()],
     ["factura-exterior-protectec.pdf", await facturaExteriorProtectec()],
     ["factura-c-sin-cae.pdf", await facturaCSinCae()],
+    ["factura-exterior-east-repair.pdf", await facturaExteriorEastRepair()],
   ];
 
   for (const [name, bytes] of files) {
