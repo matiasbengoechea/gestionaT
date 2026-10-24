@@ -12,6 +12,7 @@ import { readFileSync } from "node:fs";
 import { basename, extname } from "node:path";
 import { extractInvoice } from "../lib/ai";
 import { getClient } from "../lib/clients";
+import { applyFx } from "../lib/fx";
 import { formatDateAR } from "../lib/ui-mapping";
 import { validateInvoice } from "../lib/validate";
 import type { InvoiceData } from "../lib/types";
@@ -89,7 +90,15 @@ function printReport(
     `   Receptor    : ${invoice.receptor.razonSocial} · ${invoice.receptor.cuit}`,
   );
   console.log(
-    `   Moneda      : ${invoice.moneda}${invoice.tipoCambio ? ` · cotización ${invoice.tipoCambio}` : ""}`,
+    `   Moneda      : ${invoice.moneda}${
+      invoice.tipoCambio
+        ? ` · cotización ${invoice.tipoCambio}${
+            invoice.tipoCambioFuente
+              ? ` (${invoice.tipoCambioFuente}, ${invoice.tipoCambioFecha})`
+              : ""
+          }`
+        : ""
+    }`,
   );
 
   console.log(`\n   Ítems (${invoice.items.length}):`);
@@ -166,15 +175,16 @@ async function main() {
         { base64, mimeType, fileName: basename(file) },
         client,
       );
-      const issues = validateInvoice(invoice, client, []);
+      const enriched = await applyFx(invoice);
+      const issues = validateInvoice(enriched, client, []);
       const meta = { provider, model, durationMs: Date.now() - started };
 
       if (json) {
         console.log(
-          JSON.stringify({ file, meta, invoice, issues }, null, 2),
+          JSON.stringify({ file, meta, invoice: enriched, issues }, null, 2),
         );
       } else {
-        printReport(file, invoice, issues, meta);
+        printReport(file, enriched, issues, meta);
       }
     } catch (error) {
       failures += 1;

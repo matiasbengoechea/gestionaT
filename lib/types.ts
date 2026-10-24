@@ -52,6 +52,12 @@ export interface InvoiceData {
   /** Código ISO 4217: ARS, USD, EUR... */
   moneda: string;
   tipoCambio: number | null;
+  /** Fuente de la cotización aplicada (ej. "ArgentinaDatos (oficial, venta)"). */
+  tipoCambioFuente?: string | null;
+  /** Fecha efectiva de la cotización (ISO). */
+  tipoCambioFecha?: string | null;
+  /** Cotización de mercado, para comparar con la impresa en el comprobante. */
+  tipoCambioMercado?: number | null;
   items: InvoiceItem[];
   subtotal: number;
   impuestos: TaxLine[];

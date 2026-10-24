@@ -214,12 +214,35 @@ export function validateInvoice(
     });
   }
 
-  if (data.moneda && data.moneda.toUpperCase() !== "ARS" && !data.tipoCambio) {
-    issues.push({
-      code: "tipo_cambio_faltante",
-      message: `El comprobante está en ${data.moneda} y no se informó el tipo de cambio.`,
-      severity: "warning",
-    });
+  if (data.moneda && data.moneda.toUpperCase() !== "ARS") {
+    if (!data.tipoCambio) {
+      issues.push({
+        code: "tipo_cambio_faltante",
+        message: `El comprobante está en ${data.moneda} y no se informó el tipo de cambio.`,
+        severity: "warning",
+      });
+    } else if (data.tipoCambioFuente) {
+      const mercado = data.tipoCambioMercado;
+      const esDeMercado =
+        typeof mercado === "number" && Math.abs(data.tipoCambio - mercado) < 0.0001;
+      issues.push({
+        code: "cotizacion_aplicada",
+        message: esDeMercado
+          ? `Cotización aplicada: ${data.tipoCambio} ARS por ${data.moneda} (${data.tipoCambioFuente}, ${data.tipoCambioFecha ?? "—"}).`
+          : `Cotización del comprobante: ${data.tipoCambio} ARS por ${data.moneda}. Mercado: ${mercado} (${data.tipoCambioFuente}, ${data.tipoCambioFecha ?? "—"}).`,
+        severity: "info",
+      });
+      if (
+        typeof mercado === "number" &&
+        Math.abs(data.tipoCambio - mercado) / mercado > 0.05
+      ) {
+        issues.push({
+          code: "cotizacion_difiere",
+          message: `La cotización del comprobante (${data.tipoCambio}) difiere más de 5% de la de mercado (${mercado}).`,
+          severity: "warning",
+        });
+      }
+    }
   }
 
   // --- Duplicados ---

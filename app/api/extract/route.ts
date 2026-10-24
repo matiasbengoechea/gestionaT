@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getClient } from "@/lib/clients";
 import { extractInvoice, MissingApiKeyError } from "@/lib/ai";
+import { applyFx } from "@/lib/fx";
 import { validateInvoice } from "@/lib/validate";
 import type { ErrorResponse, ExtractionResponse } from "@/lib/types";
 
@@ -82,11 +83,12 @@ export async function POST(request: Request) {
       client,
     );
 
-    const issues = validateInvoice(invoice, client, knownKeys);
+    const enriched = await applyFx(invoice);
+    const issues = validateInvoice(enriched, client, knownKeys);
 
     return NextResponse.json<ExtractionResponse>({
       ok: true,
-      invoice,
+      invoice: enriched,
       issues,
       meta: {
         provider,

@@ -109,6 +109,28 @@ El motor distingue `origen: "local"` (comprobante AFIP) de `origen: "exterior"`
 La pantalla arranca con un **lote de demostración** de 6 facturas ficticias (5 del exterior y
 1 local) para mostrar ambos caminos. No tienen archivo asociado: son filas ya interpretadas.
 
+## Conversión a pesos
+
+Las facturas en moneda extranjera se convierten con una cotización **con fuente y fecha**, que
+trae el código (nunca el modelo):
+
+- **USD**: [ArgentinaDatos](https://api.argentinadatos.com) — histórico por casa (`oficial`,
+  `blue`, `bolsa`, `contadoconliqui`, `mayorista`, `tarjeta`).
+- **Otras monedas**: cruce con el tipo de referencia del BCE vía
+  [Frankfurter](https://api.frankfurter.app).
+
+Si el comprobante trae su propia cotización, se respeta y se compara con la de mercado: si
+difiere más de 5%, queda un aviso.
+
+| Variable | Descripción |
+| --- | --- |
+| `FX_ENABLED` | `false` desactiva la conversión automática. Default `true`. |
+| `FX_TIPO` | Casa del dólar. Default `oficial`. |
+| `FX_LADO` | `venta` o `compra`. Default `venta`. |
+
+> Qué tipo de cambio corresponde para registrar cada comprobante es una decisión contable:
+> confirmalo con un contador antes de usarlo en producción.
+
 ## Controles que aplica el motor
 
 - Dígito verificador de CUIT (módulo 11) en emisor y receptor.
