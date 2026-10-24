@@ -96,35 +96,52 @@ export async function saveInvoice(record: StoredInvoice): Promise<void> {
   if (memory.length > MAX_MEMORY) memory.length = MAX_MEMORY;
 }
 
-export async function listInvoices(limit = 100): Promise<StoredInvoice[]> {
+export async function listInvoices(
+  limit = 100,
+): Promise<{ invoices: StoredInvoice[]; error?: string }> {
   const config = supabaseConfig();
 
   if (config) {
-    const response = await fetch(
-      `${config.url}/rest/v1/invoices?select=*&order=recibido_en.desc&limit=${limit}`,
-      {
-        headers: { apikey: config.key, Authorization: `Bearer ${config.key}` },
-        cache: "no-store",
-      },
-    );
-    if (!response.ok) return [];
+    try {
+      const response = await fetch(
+        `${config.url}/rest/v1/invoices?select=*&order=recibido_en.desc&limit=${limit}`,
+        {
+          headers: { apikey: config.key, Authorization: `Bearer ${config.key}` },
+          cache: "no-store",
+        },
+      );
+      if (!response.ok) {
+        const detail = await response.text().catch(() => "");
+        return {
+          invoices: [],
+          error: `Supabase HTTP ${response.status}: ${detail.slice(0, 200)}`,
+        };
+      }
 
-    const rows = (await response.json()) as Array<Record<string, unknown>>;
-    return rows.map((row) => ({
-      id: String(row.id),
-      recibidoEn: String(row.recibido_en ?? ""),
-      origen: row.origen === "email" ? "email" : "web",
-      remitente: row.remitente ? String(row.remitente) : undefined,
-      asunto: row.asunto ? String(row.asunto) : undefined,
-      fileName: String(row.file_name ?? ""),
-      clientId: String(row.client_id ?? ""),
-      invoice: row.invoice as InvoiceData,
-      issues: (row.issues ?? []) as ValidationIssue[],
-      provider: String(row.provider ?? ""),
-      model: String(row.model ?? ""),
-      durationMs: Number(row.duration_ms ?? 0),
-    }));
+      const rows = (await response.json()) as Array<Record<string, unknown>>;
+      return {
+        invoices: rows.map((row) => ({
+          id: String(row.id),
+          recibidoEn: String(row.recibido_en ?? ""),
+          origen: row.origen === "email" ? "email" : "web",
+          remitente: row.remitente ? String(row.remitente) : undefined,
+          asunto: row.asunto ? String(row.asunto) : undefined,
+          fileName: String(row.file_name ?? ""),
+          clientId: String(row.client_id ?? ""),
+          invoice: row.invoice as InvoiceData,
+          issues: (row.issues ?? []) as ValidationIssue[],
+          provider: String(row.provider ?? ""),
+          model: String(row.model ?? ""),
+          durationMs: Number(row.duration_ms ?? 0),
+        })),
+      };
+    } catch (error) {
+      return {
+        invoices: [],
+        error: error instanceof Error ? error.message : "error de red",
+      };
+    }
   }
 
-  return memory.slice(0, limit);
+  return { invoices: memory.slice(0, limit) };
 }
