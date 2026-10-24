@@ -32,6 +32,10 @@ export interface StoredInvoice {
   remitente?: string;
   asunto?: string;
   fileName: string;
+  /** Ruta del archivo original dentro del bucket `invoices`. */
+  filePath?: string;
+  /** URL firmada, calculada al leer. */
+  fileUrl?: string;
   clientId: string;
   invoice: InvoiceData;
   issues: ValidationIssue[];
@@ -55,6 +59,50 @@ export function storageBackend(): "supabase" | "memory" {
   return supabaseConfig() ? "supabase" : "memory";
 }
 
+/** Sube el archivo original al bucket privado `invoices`. */
+export async function uploadInvoiceFile(
+  path: string,
+  base64: string,
+  mimeType: string,
+): Promise<string | null> {
+  const config = supabaseConfig();
+  if (!config) return null;
+
+  const response = await fetch(`${config.url}/storage/v1/object/invoices/${path}`, {
+    method: "POST",
+    headers: {
+      apikey: config.key,
+      Authorization: `Bearer ${config.key}`,
+      "Content-Type": mimeType,
+      "x-upsert": "true",
+    },
+    body: Buffer.from(base64, "base64"),
+  });
+
+  return response.ok ? path : null;
+}
+
+/** URL firmada (temporal) para ver el archivo original. */
+export async function signedFileUrl(path: string, expiresIn = 3600): Promise<string | null> {
+  const config = supabaseConfig();
+  if (!config) return null;
+
+  const response = await fetch(`${config.url}/storage/v1/object/sign/invoices/${path}`, {
+    method: "POST",
+    headers: {
+      apikey: config.key,
+      Authorization: `Bearer ${config.key}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ expiresIn }),
+  });
+
+  if (!response.ok) return null;
+  const payload = (await response.json()) as { signedURL?: string };
+  if (!payload.signedURL) return null;
+  return `${config.url}/storage/v1${payload.signedURL}`;
+}
+
 export async function saveInvoice(record: StoredInvoice): Promise<void> {
   const config = supabaseConfig();
 
@@ -74,6 +122,7 @@ export async function saveInvoice(record: StoredInvoice): Promise<void> {
         remitente: record.remitente ?? null,
         asunto: record.asunto ?? null,
         file_name: record.fileName,
+        file_path: record.filePath ?? null,
         client_id: record.clientId,
         invoice: record.invoice,
         issues: record.issues,
@@ -119,22 +168,30 @@ export async function listInvoices(
       }
 
       const rows = (await response.json()) as Array<Record<string, unknown>>;
-      return {
-        invoices: rows.map((row) => ({
+      const invoices: StoredInvoice[] = rows.map((row) => ({
           id: String(row.id),
           recibidoEn: String(row.recibido_en ?? ""),
           origen: row.origen === "email" ? "email" : "web",
           remitente: row.remitente ? String(row.remitente) : undefined,
           asunto: row.asunto ? String(row.asunto) : undefined,
           fileName: String(row.file_name ?? ""),
+          filePath: row.file_path ? String(row.file_path) : undefined,
           clientId: String(row.client_id ?? ""),
           invoice: row.invoice as InvoiceData,
           issues: (row.issues ?? []) as ValidationIssue[],
           provider: String(row.provider ?? ""),
           model: String(row.model ?? ""),
           durationMs: Number(row.duration_ms ?? 0),
-        })),
-      };
+        }));
+
+      await Promise.all(
+        invoices.map(async (invoice) => {
+          if (!invoice.filePath) return;
+          invoice.fileUrl = (await signedFileUrl(invoice.filePath)) ?? undefined;
+        }),
+      );
+
+      return { invoices };
     } catch (error) {
       return {
         invoices: [],

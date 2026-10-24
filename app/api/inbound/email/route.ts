@@ -3,7 +3,7 @@ import { extractInvoice } from "@/lib/ai";
 import { DEFAULT_CLIENT_ID, getClient } from "@/lib/clients";
 import { applyFx } from "@/lib/fx";
 import { parseInbound } from "@/lib/inbound/parse";
-import { saveInvoice } from "@/lib/store";
+import { saveInvoice, uploadInvoiceFile } from "@/lib/store";
 import type { ValidationIssue } from "@/lib/types";
 import { validateInvoice } from "@/lib/validate";
 
@@ -127,13 +127,22 @@ export async function POST(request: Request) {
         });
       }
 
+      const id = newId();
+      const safeName = attachment.filename.replace(/[^a-zA-Z0-9._-]/g, "_") || "factura";
+      const filePath = await uploadInvoiceFile(
+        `${id}/${safeName}`,
+        attachment.base64,
+        attachment.mimeType,
+      );
+
       const record = {
-        id: newId(),
+        id,
         recibidoEn: new Date().toISOString(),
         origen: "email" as const,
         remitente: parsed.from,
         asunto: parsed.subject,
         fileName: attachment.filename,
+        filePath: filePath ?? undefined,
         clientId: client.id,
         invoice: fx.invoice,
         issues,

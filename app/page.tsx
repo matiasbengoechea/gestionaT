@@ -120,6 +120,7 @@ export default function Home() {
           payload.invoices as Array<{
             id: string
             fileName: string
+            fileUrl?: string
             clientId: string
             invoice: InvoiceData
             issues?: ValidationIssue[]
@@ -135,6 +136,10 @@ export default function Home() {
               client?.rubro ?? '',
             ),
             fileName: record.fileName,
+            fileUrl: record.fileUrl,
+            fileType: record.fileName.toLowerCase().endsWith('.pdf')
+              ? 'application/pdf'
+              : 'image/png',
             reviewed: false,
           } as Invoice
         })
@@ -307,7 +312,7 @@ export default function Home() {
           </div><div className="flex shrink-0 items-center justify-end gap-3 border-t bg-muted/30 px-5 py-3">{sentInfo ? <span className="mr-auto text-xs text-muted-foreground">{sentInfo.facturas} facturas · {sentInfo.renglones} renglones · {formatMoney(sentInfo.totalArs, 'ARS')}</span> : null}{sendError ? <span className="mr-auto text-xs text-rose-600">{sendError}</span> : null}<button className="button-secondary">Cancelar</button><button onClick={saveAllAndSend} disabled={sending || invoices.every((invoice) => !invoice.data)} className="button-primary disabled:opacity-40">{sent ? <Check className="size-4" /> : null}{sending ? 'Enviando…' : sent ? 'Enviado' : 'Guardar todo y enviar'}</button></div>
         </section>
 
-        <aside className="flex min-w-[380px] flex-[0.85] flex-col bg-slate-100"><div className="flex h-12 shrink-0 items-center gap-1 border-b bg-card px-3"><button className="viewer-button"><Plus /></button><button className="viewer-button"><ZoomOut /></button><button className="viewer-button"><ArrowLeft /></button><button className="viewer-button"><ArrowRight /></button><button className="viewer-button"><Move /></button><button className="viewer-button"><Undo2 /></button><button className="viewer-button"><Redo2 /></button><div className="ml-auto flex items-center gap-2 text-xs text-muted-foreground"><span>1 / 1</span><button className="viewer-button"><Maximize2 /></button></div></div><div className="min-h-0 flex-1 overflow-auto p-8">{selected.fileUrl ? (selected.fileType === 'application/pdf' ? <iframe title={`Documento ${selected.fileName}`} src={selected.fileUrl} className="h-full min-h-[720px] w-full rounded bg-white shadow-sm" /> : <div className="flex min-h-[720px] items-start justify-center rounded bg-white p-5 shadow-sm"><img src={selected.fileUrl} alt={`Factura cargada ${selected.fileName}`} className="max-h-[850px] max-w-full object-contain" /></div>) : <div className="mx-auto flex min-h-[720px] max-w-[620px] flex-col items-center justify-center gap-3 rounded bg-white p-12 text-center shadow-sm"><FileText className="size-10 text-slate-300" /><p className="text-sm font-medium text-slate-600">Sin documento para mostrar</p><p className="text-xs text-slate-400">Las facturas que llegan por mail todavía no guardan el archivo original.</p></div>}</div></aside>
+        <aside className="flex min-w-[380px] flex-[0.85] flex-col bg-slate-100"><div className="flex h-12 shrink-0 items-center gap-1 border-b bg-card px-3"><button className="viewer-button"><Plus /></button><button className="viewer-button"><ZoomOut /></button><button className="viewer-button"><ArrowLeft /></button><button className="viewer-button"><ArrowRight /></button><button className="viewer-button"><Move /></button><button className="viewer-button"><Undo2 /></button><button className="viewer-button"><Redo2 /></button><div className="ml-auto flex items-center gap-2 text-xs text-muted-foreground"><span>1 / 1</span><button className="viewer-button"><Maximize2 /></button></div></div><div className="min-h-0 flex-1 overflow-auto p-8">{selected.fileUrl ? (selected.fileType === 'application/pdf' ? <iframe title={`Documento ${selected.fileName}`} src={selected.fileUrl} className="h-full min-h-[720px] w-full rounded bg-white shadow-sm" /> : <div className="flex min-h-[720px] items-start justify-center rounded bg-white p-5 shadow-sm"><img src={selected.fileUrl} alt={`Factura cargada ${selected.fileName}`} className="max-h-[850px] max-w-full object-contain" /></div>) : <div className="mx-auto flex min-h-[720px] max-w-[620px] flex-col items-center justify-center gap-3 rounded bg-white p-12 text-center shadow-sm"><FileText className="size-10 text-slate-300" /><p className="text-sm font-medium text-slate-600">Sin documento para mostrar</p><p className="text-xs text-slate-400">Subí una factura para verla acá junto a los datos extraídos.</p></div>}</div></aside>
       </div>
     </main>
   )
