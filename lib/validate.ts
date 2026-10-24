@@ -1,5 +1,6 @@
 import { isValidCuit, normalizeCuit } from "./cuit";
 import type { ClientProfile } from "./clients";
+import { formatMoney } from "./format";
 import type { InvoiceData, TaxLine, ValidationIssue } from "./types";
 
 const TOLERANCE = 0.05;
@@ -225,11 +226,12 @@ export function validateInvoice(
       const mercado = data.tipoCambioMercado;
       const esDeMercado =
         typeof mercado === "number" && Math.abs(data.tipoCambio - mercado) < 0.0001;
+      const totalArs = formatMoney(data.total * data.tipoCambio, "ARS");
       issues.push({
         code: "cotizacion_aplicada",
         message: esDeMercado
-          ? `Cotización aplicada: ${data.tipoCambio} ARS por ${data.moneda} (${data.tipoCambioFuente}, ${data.tipoCambioFecha ?? "—"}).`
-          : `Cotización del comprobante: ${data.tipoCambio} ARS por ${data.moneda}. Mercado: ${mercado} (${data.tipoCambioFuente}, ${data.tipoCambioFecha ?? "—"}).`,
+          ? `Cotización aplicada: ${data.tipoCambio} ARS por ${data.moneda} (${data.tipoCambioFuente}, ${data.tipoCambioFecha ?? "—"}). Total en pesos: ${totalArs}.`
+          : `Cotización del comprobante: ${data.tipoCambio} ARS por ${data.moneda}. Mercado: ${mercado} (${data.tipoCambioFuente}, ${data.tipoCambioFecha ?? "—"}). Total en pesos: ${totalArs}.`,
         severity: "info",
       });
       if (
