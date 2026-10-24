@@ -1,7 +1,7 @@
 'use client'
 
 import { ChangeEvent, useEffect, useMemo, useState } from 'react'
-import { CLIENTS, getClient } from '@/lib/clients'
+import { DEFAULT_CLIENT_ID, getClient } from '@/lib/clients'
 import { isValidCuit } from '@/lib/cuit'
 import { formatMoney } from '@/lib/format'
 import { sumTaxes } from '@/lib/validate'
@@ -74,7 +74,8 @@ function mapInvoice(
       : first.descripcion
     : data.observaciones
   return {
-    company,
+    // La empresa es la del receptor del comprobante; si no figura, el cliente.
+    company: data.receptor.razonSocial || company,
     activity,
     year: data.fechaEmision ? data.fechaEmision.slice(0, 4) : '—',
     date: formatDate(data.fechaEmision),
@@ -102,7 +103,7 @@ export default function Home() {
   const [sendError, setSendError] = useState<string | null>(null)
   const [sentInfo, setSentInfo] = useState<{ facturas: number; renglones: number; totalArs: number } | null>(null)
   // Cliente por defecto: el motor lo usa para el plan de cuentas y el receptor.
-  const clientId = CLIENTS[0].id
+  const clientId = DEFAULT_CLIENT_ID
   const selected = useMemo(
     () => invoices.find((invoice) => invoice.id === selectedId) ?? invoices[0] ?? blankInvoice,
     [invoices, selectedId],
@@ -213,7 +214,7 @@ export default function Home() {
   const handleUpload = (event: ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files ?? [])
     if (!files.length) return
-    const client = getClient(clientId) ?? CLIENTS[0]
+    const client = getClient(clientId) ?? getClient(DEFAULT_CLIENT_ID)!
     const ids = files.map(() => newId())
     const placeholders = files.map((file, index): Invoice => ({
       id: ids[index],

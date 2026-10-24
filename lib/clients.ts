@@ -89,6 +89,36 @@ export const CLIENTS: ClientProfile[] = [
   },
 ];
 
+/**
+ * Perfil genérico: permite procesar cualquier factura sin configurar un cliente.
+ * No tiene CUIT, así que no se controla el receptor contra él.
+ */
+export const GENERIC_CLIENT: ClientProfile = {
+  id: "generico",
+  nombre: "Cliente genérico",
+  cuit: "",
+  rubro: "Sin configurar",
+  condicionIva: "",
+  domicilio: "",
+  contexto:
+    "No hay un cliente configurado. Extraé los datos del comprobante sin asumir un plan de cuentas específico. " +
+    "Si hay una cuenta razonablemente aplicable del plan genérico, usala.",
+  planCuentas: [
+    { cuenta: "1.1.4.01", descripcion: "Mercaderías" },
+    { cuenta: "1.1.4.02", descripcion: "Insumos y materiales" },
+    { cuenta: "1.2.1.01", descripcion: "IVA Crédito Fiscal" },
+    { cuenta: "5.2.1.01", descripcion: "Servicios" },
+    { cuenta: "5.2.2.01", descripcion: "Honorarios profesionales" },
+    { cuenta: "5.2.3.01", descripcion: "Fletes y logística" },
+    { cuenta: "5.2.5.01", descripcion: "Mantenimiento y repuestos" },
+    { cuenta: "5.3.1.01", descripcion: "Gastos bancarios" },
+  ],
+};
+
+/** Cliente por defecto cuando no se especifica uno. */
+export const DEFAULT_CLIENT_ID = GENERIC_CLIENT.id;
+
 export function getClient(id: string | null | undefined): ClientProfile | undefined {
+  if (id === GENERIC_CLIENT.id) return GENERIC_CLIENT;
   return CLIENTS.find((client) => client.id === id);
 }

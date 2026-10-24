@@ -141,6 +141,7 @@ export function validateInvoice(
 
   if (
     client &&
+    client.cuit &&
     isValidCuit(data.receptor.cuit) &&
     normalizeCuit(data.receptor.cuit) !== normalizeCuit(client.cuit)
   ) {

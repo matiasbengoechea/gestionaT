@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { extractInvoice } from "@/lib/ai";
-import { CLIENTS, getClient } from "@/lib/clients";
+import { DEFAULT_CLIENT_ID, getClient } from "@/lib/clients";
 import { applyFx } from "@/lib/fx";
 import { parseInbound } from "@/lib/inbound/parse";
 import { saveInvoice } from "@/lib/store";
@@ -82,7 +82,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const client = getClient(parsed.clientId) ?? CLIENTS[0];
+  const client = getClient(parsed.clientId) ?? getClient(DEFAULT_CLIENT_ID)!;
   const resultados: Array<Record<string, unknown>> = [];
 
   for (const attachment of parsed.attachments) {
