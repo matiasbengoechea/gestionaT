@@ -175,8 +175,16 @@ async function main() {
         { base64, mimeType, fileName: basename(file) },
         client,
       );
-      const enriched = await applyFx(invoice);
+      const fx = await applyFx(invoice);
+      const enriched = fx.invoice;
       const issues = validateInvoice(enriched, client, []);
+      if (fx.error) {
+        issues.push({
+          code: "cotizacion_no_disponible",
+          message: `No se pudo obtener la cotización: ${fx.error}.`,
+          severity: "warning",
+        });
+      }
       const meta = { provider, model, durationMs: Date.now() - started };
 
       if (json) {

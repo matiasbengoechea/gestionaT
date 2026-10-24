@@ -83,8 +83,16 @@ export async function POST(request: Request) {
       client,
     );
 
-    const enriched = await applyFx(invoice);
+    const fx = await applyFx(invoice);
+    const enriched = fx.invoice;
     const issues = validateInvoice(enriched, client, knownKeys);
+    if (fx.error) {
+      issues.push({
+        code: "cotizacion_no_disponible",
+        message: `No se pudo obtener la cotización: ${fx.error}.`,
+        severity: "warning",
+      });
+    }
 
     return NextResponse.json<ExtractionResponse>({
       ok: true,
