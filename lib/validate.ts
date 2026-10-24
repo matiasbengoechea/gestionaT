@@ -227,11 +227,12 @@ export function validateInvoice(
       const esDeMercado =
         typeof mercado === "number" && Math.abs(data.tipoCambio - mercado) < 0.0001;
       const totalArs = formatMoney(data.total * data.tipoCambio, "ARS");
+      const totalOriginal = formatMoney(data.total, data.moneda);
       issues.push({
         code: "cotizacion_aplicada",
         message: esDeMercado
-          ? `Cotización aplicada: ${data.tipoCambio} ARS por ${data.moneda} (${data.tipoCambioFuente}, ${data.tipoCambioFecha ?? "—"}). Total en pesos: ${totalArs}.`
-          : `Cotización del comprobante: ${data.tipoCambio} ARS por ${data.moneda}. Mercado: ${mercado} (${data.tipoCambioFuente}, ${data.tipoCambioFecha ?? "—"}). Total en pesos: ${totalArs}.`,
+          ? `Cotización aplicada: ${data.tipoCambio} ARS por ${data.moneda} (${data.tipoCambioFuente}, ${data.tipoCambioFecha ?? "—"}). Total original: ${totalOriginal} · Total en pesos: ${totalArs}.`
+          : `Cotización del comprobante: ${data.tipoCambio} ARS por ${data.moneda}. Mercado: ${mercado} (${data.tipoCambioFuente}, ${data.tipoCambioFecha ?? "—"}). Total original: ${totalOriginal} · Total en pesos: ${totalArs}.`,
         severity: "info",
       });
       if (

@@ -3,6 +3,7 @@
 import { ChangeEvent, useMemo, useState } from 'react'
 import { CLIENTS, getClient } from '@/lib/clients'
 import { isValidCuit } from '@/lib/cuit'
+import { formatMoney } from '@/lib/format'
 import type { InvoiceData, ValidationIssue } from '@/lib/types'
 import {
   AlertTriangle, ArrowLeft, ArrowRight, Check, CircleHelp, FileText, Folders,
@@ -60,7 +61,10 @@ function mapInvoice(
     entry: formatDate(data.fechaEmision),
     number: data.puntoDeVenta ? `${data.puntoDeVenta}-${data.numero}` : data.numero || '—',
     supplier: data.emisor.razonSocial || '—',
-    total: formatTotal(data.total),
+    total: formatMoney(
+      data.moneda !== 'ARS' && data.tipoCambio ? data.total * data.tipoCambio : data.total,
+      'ARS',
+    ),
     status,
     nif: data.emisor.cuit || '—',
     concept: concept || '—',
