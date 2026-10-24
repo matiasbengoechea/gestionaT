@@ -58,7 +58,7 @@ export function resolveProvider(): ProviderConfig {
     if (!openrouterKey) throw new MissingApiKeyError();
     return {
       provider: "openrouter",
-      model: (process.env.OPENROUTER_MODEL ?? "openai/gpt-6-luna").trim(),
+      model: (process.env.OPENROUTER_MODEL ?? "google/gemini-2.5-flash").trim(),
       apiKey: openrouterKey,
     };
   }

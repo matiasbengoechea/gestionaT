@@ -156,7 +156,7 @@ export default function Home() {
   }
 
   return (
-    <main className="flex h-screen min-w-[1080px] flex-col overflow-hidden bg-background text-foreground">
+    <main className="flex h-full min-w-[1080px] flex-col overflow-hidden bg-background text-foreground">
       <header className="flex h-14 shrink-0 items-center justify-between border-b bg-card px-5">
         <div className="flex items-center gap-5"><button className="flex items-center gap-2 text-sm font-semibold"><ArrowLeft className="size-4 text-muted-foreground" /> Identificación de facturas</button><label className="flex items-center gap-2 text-xs text-muted-foreground">Empresa<select value={clientId} onChange={(event) => setClientId(event.target.value)} className="h-8 rounded-md border bg-background px-2 text-xs text-foreground">{CLIENTS.map((client) => <option key={client.id} value={client.id}>{client.nombre}</option>)}</select></label><label className="button-primary cursor-pointer"><Upload className="size-4" /> Subir Facturas<input type="file" className="sr-only" accept=".pdf,.png,.jpg,.jpeg" multiple onChange={handleUpload} /></label><button className="flex items-center gap-2 text-sm font-medium text-destructive hover:opacity-75"><Trash2 className="size-4" /> Eliminar</button></div>
         <div className="flex items-center gap-1"><button className="toolbar-button"><Folders className="size-4" /> Plan Contable</button><button className="toolbar-button"><Tag className="size-4" /> Etiquetas</button><button className="icon-button" aria-label="Ayuda"><CircleHelp className="size-5" /></button><div className="ml-3 size-7 rounded-full bg-primary text-center text-xs font-bold leading-7 text-primary-foreground">AG</div></div>
